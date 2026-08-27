@@ -1,11 +1,11 @@
 import { NotesRepository } from '../db/queries/notes';
-import { Note } from '../shared/types/Note';
+import { Note } from '../../shared/types/Note';
 import {
   CreateNoteRequest,
   ReadNotesRequest,
   UpdateNoteRequest,
   DeleteNoteRequest,
-} from '../shared/types/IPC';
+} from '../../shared/types/IPC';
 
 export class CrudHandlers {
   private notesRepo: NotesRepository;

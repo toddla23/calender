@@ -1,13 +1,15 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { IPCHandlerRegistry } from './ipc/handlers';
+import { SyncEngine } from './sync/sync-engine';
 
 let mainWindow: BrowserWindow | null = null;
+let syncEngine: SyncEngine | null = null;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 600,
+    width: 1000,
+    height: 700,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -31,14 +33,24 @@ const createWindow = () => {
 };
 
 app.on('ready', () => {
-  // IPC 핸들러 등록
   const ipcRegistry = new IPCHandlerRegistry();
   ipcRegistry.register();
+
+  const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+  syncEngine = new SyncEngine({
+    backendUrl,
+    autoSync: true,
+    syncInterval: 30000,
+  });
+  syncEngine.start();
 
   createWindow();
 });
 
 app.on('window-all-closed', () => {
+  if (syncEngine) {
+    syncEngine.destroy();
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }

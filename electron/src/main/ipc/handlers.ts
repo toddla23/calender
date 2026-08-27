@@ -1,5 +1,5 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import { IPC_CRUD_CHANNELS, IPC_SYNC_CHANNELS, IPC_NETWORK_CHANNELS, IPCResponse } from '../shared/types/IPC';
+import { IPC_CRUD_CHANNELS, IPC_SYNC_CHANNELS, IPC_NETWORK_CHANNELS, IPCResponse } from '../../shared/types/IPC';
 import { CrudHandlers } from './crud';
 import { SyncHandlers } from './sync';
 import { NetworkHandlers } from './network';

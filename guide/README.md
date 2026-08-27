@@ -106,6 +106,27 @@
 
 ---
 
+### 🍓 라즈베리파이 배포 가이드 (DevOps, 홈서버 운영자)
+**파일:** [`RASPBERRY_PI_DEPLOYMENT.md`](./RASPBERRY_PI_DEPLOYMENT.md)  
+**시간:** 2-4시간  
+**내용:**
+- **라즈베리파이 초기 설정** (OS 설치, 시스템 업데이트, 스왑 확대)
+- **Java 17 설치** (ARM64 아키텍처 최적화)
+- **PostgreSQL 설정** (로컬 설치 또는 AWS RDS)
+- **Spring Boot 배포** (JAR 빌드/전송, Systemd 서비스)
+- **메모리 최적화** (-Xmx256m, -Xms128m 등)
+- **네트워크 설정** (포트 포워딩, DDNS, 고정 IP)
+- **보안 설정** (SSH, 공개키 인증, 방화벽)
+- **모니터링** (로그, CPU/메모리, API 헬스 체크)
+- **자동 재시작/업데이트** (24시간 안정화)
+- **성능 최적화** (Java GC 튜닝, DB 최적화)
+- **라즈베리파이 모델별 추천** (Pi 4B, Pi 5, Zero 2W 등)
+- **문제 해결** (메모리 부족, 연결 오류, 성능 문제)
+
+→ **라즈베리파이 홈서버 구축 완벽 가이드!** 🍓
+
+---
+
 ## 📊 상황별 가이드 선택
 
 ### "방금 프로젝트를 받았는데 뭘 해야 하나요?"
@@ -126,9 +147,10 @@
 → [`TESTING_GUIDE.md`](./TESTING_GUIDE.md) 읽고 실행
 
 ### "프로덕션에 배포해야 합니다"
-→ **2가지 선택지:**
+→ **3가지 선택지:**
 1. **전체 프로세스:** [`PHASE4_DEPLOYMENT_CHECKLIST.md`](./PHASE4_DEPLOYMENT_CHECKLIST.md) ← **추천! 단계별 체크리스트**
 2. **상세 기술 정보:** [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md)
+3. **라즈베리파이 홈서버:** [`RASPBERRY_PI_DEPLOYMENT.md`](./RASPBERRY_PI_DEPLOYMENT.md) ← **24시간 운영용**
 
 ### "API를 호출해야 합니다"
 → [`API_REFERENCE.md`](./API_REFERENCE.md) 참고
@@ -178,14 +200,16 @@
 | DEPLOYMENT_GUIDE.md | 12K | 500 | DevOps | 2시간 |
 | **SETUP_KEYS_AND_ENV.md** | **18K** | **700** | **배포자** | **1-2시간** |
 | **PHASE4_DEPLOYMENT_CHECKLIST.md** | **23K** | **1,000** | **배포 담당자** | **참고용** |
+| **RASPBERRY_PI_DEPLOYMENT.md** | **32K** | **1,200** | **홈서버 운영자** | **2-4시간** |
 | API_REFERENCE.md | 6.7K | 350 | 개발자 | 30분 |
 | TROUBLESHOOTING.md | 9.0K | 400 | 모두 | 1시간 |
-| README.md | 5.0K | 190 | 모두 | 15분 |
-| **총합** | **104K** | **4,490** | - | - |
+| README.md | 5.5K | 210 | 모두 | 15분 |
+| **총합** | **136K** | **6,110** | - | - |
 
 **✨ 신규 문서 추가:**
 - **SETUP_KEYS_AND_ENV.md**: API 키 발급 및 환경 설정 완벽 가이드 (Google OAuth, 공휴일 API, PostgreSQL, DDNS, SSL, 환경 변수)
 - **PHASE4_DEPLOYMENT_CHECKLIST.md**: Phase 4 배포 프로세스 체크리스트 (5단계, 구체적인 커맨드, 검증 항목)
+- **RASPBERRY_PI_DEPLOYMENT.md**: 라즈베리파이 홈서버 배포 (OS 설치, Java, DB, Systemd 서비스, 성능 최적화)
 
 ---
 
@@ -229,18 +253,35 @@
 - ✅ 빠른 시작 가이드 (5분)
 - ✅ API 키 및 환경 설정 가이드 (1-2시간) **← 신규!**
 - ✅ Phase 4 배포 체크리스트 (5-7일) **← 신규!**
+- ✅ **라즈베리파이 홈서버 배포** (2-4시간) **← 신규!**
 - ✅ 상세 테스트 가이드 (14개 시나리오)
 - ✅ 전체 배포 가이드 (4개 플랫폼)
 - ✅ API 레퍼런스 (완전)
 - ✅ 문제 해결 가이드 (14개 문제)
 
-**총 4,490+ 줄의 완벽한 배포 가이드 문서!** 📚
+**총 6,110+ 줄의 완벽한 배포 가이드 문서!** 📚
 
-### 📌 배포 진행 순서
+### 📌 일반 배포 진행 순서
 ```
 1️⃣ SETUP_KEYS_AND_ENV.md ← API 키 발급 및 환경 설정
 2️⃣ PHASE4_DEPLOYMENT_CHECKLIST.md ← 5단계 배포 프로세스
 3️⃣ DEPLOYMENT_GUIDE.md ← 상세 기술 정보 (필요시)
+```
+
+### 📌 라즈베리파이 홈서버 배포 순서
+```
+1️⃣ SETUP_KEYS_AND_ENV.md ← API 키 설정
+2️⃣ RASPBERRY_PI_DEPLOYMENT.md ← 라즈베리파이 배포 (10단계)
+   ├─ OS 설치
+   ├─ Java 설치
+   ├─ 데이터베이스 설정
+   ├─ Spring Boot 배포
+   ├─ 네트워크 설정
+   ├─ 보안 설정
+   ├─ 모니터링
+   ├─ 자동 재시작
+   ├─ 성능 최적화
+   └─ 자동 업데이트
 ```
 
 ---

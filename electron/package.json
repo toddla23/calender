@@ -1,0 +1,58 @@
+{
+  "name": "calendar-electron",
+  "version": "0.1.0",
+  "description": "오프라인 지원 캘린더 애플리케이션 (Windows 위젯)",
+  "main": "dist/main/index.js",
+  "homepage": "./",
+  "author": "Calendar App",
+  "license": "MIT",
+  "scripts": {
+    "react-start": "react-scripts start",
+    "react-build": "react-scripts build",
+    "react-eject": "react-scripts eject",
+    "electron-dev": "concurrently \"npm run react-start\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron-build": "npm run react-build && electron-builder",
+    "dev": "npm run electron-dev",
+    "build": "npm run electron-build",
+    "tsc": "tsc",
+    "tsc:watch": "tsc --watch"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.6.0",
+    "zustand": "^4.4.1"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "react-scripts": "5.0.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.1.0",
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1",
+    "cross-env": "^7.0.3",
+    "better-sqlite3": "^9.0.0",
+    "@types/better-sqlite3": "^7.6.4"
+  },
+  "build": {
+    "appId": "com.calendar.app",
+    "productName": "Calendar Widget",
+    "files": [
+      "dist/main/**/*",
+      "dist/renderer/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "installer"
+      ]
+    }
+  }
+}

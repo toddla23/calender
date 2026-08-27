@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar } from './components/Calendar';
 import { NotesList } from './components/NotesList';
 import { NoteModal } from './components/NoteModal';
 import { SyncStatus } from './components/SyncStatus';
+import { WidgetSettings } from './components/WidgetSettings';
 import { LoginPage } from './pages/LoginPage';
 import { useNotesStore } from './store/notes';
 import { useSyncStore } from './store/sync';
@@ -15,10 +16,45 @@ export const App: React.FC = () => {
   const { isAuthenticated, login, logout, restoreFromStorage } = useAuthStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [backgroundColor, setBackgroundColor] = useState('#ffffff');
+  const [textColor, setTextColor] = useState('#333333');
+  const [fontSize, setFontSize] = useState(14);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     restoreFromStorage();
+    loadAppearance();
   }, [restoreFromStorage]);
+
+  const loadAppearance = async () => {
+    try {
+      const electron = (globalThis as any).electron;
+      if (electron?.config?.getConfig) {
+        const config = await electron.config.getConfig();
+        setBackgroundColor(config.appearance.backgroundColor);
+        setTextColor(config.appearance.textColor);
+        setFontSize(config.appearance.fontSize);
+      }
+    } catch (error) {
+      console.error('외형 로드 실패:', error);
+    }
+  };
+
+  useEffect(() => {
+    const handleAppearanceUpdated = (data: any) => {
+      setBackgroundColor(data.backgroundColor);
+      setTextColor(data.textColor);
+      setFontSize(data.fontSize);
+    };
+
+    const electron = (globalThis as any).electron;
+    if (electron?.config?.onAppearanceUpdated) {
+      electron.config.onAppearanceUpdated(handleAppearanceUpdated);
+    }
+  }, []);
 
   useEffect(() => {
     const handleLogoutRequired = (event: any) => {
@@ -47,7 +83,6 @@ export const App: React.FC = () => {
     const ipcRenderer = (globalThis as any).electron?.ipc;
     if (!ipcRenderer) return;
 
-    // Subscribe to remote note changes via WebSocket
     const unsubscribeCreated = ipcRenderer.on('sync:note-created', (data: any) => {
       console.log('Remote note created:', data);
       const note = data.note;
@@ -71,6 +106,41 @@ export const App: React.FC = () => {
       unsubscribeDeleted?.();
     };
   }, [isAuthenticated, addNote, updateNote, deleteNote]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-draggable="false"]')) return;
+    
+    setIsDragging(true);
+    dragRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !containerRef.current) return;
+
+    const deltaX = e.clientX - dragRef.current.x;
+    const deltaY = e.clientY - dragRef.current.y;
+
+    const newX = containerRef.current.offsetLeft + deltaX;
+    const newY = containerRef.current.offsetTop + deltaY;
+
+    containerRef.current.style.left = `${newX}px`;
+    containerRef.current.style.top = `${newY}px`;
+
+    dragRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseUp = async () => {
+    if (!isDragging || !containerRef.current) return;
+    setIsDragging(false);
+
+    const electron = (globalThis as any).electron;
+    if (electron?.config?.updatePosition) {
+      await electron.config.updatePosition(
+        containerRef.current.offsetLeft,
+        containerRef.current.offsetTop
+      );
+    }
+  };
 
   const handleLoginSuccess = async (
     accessToken: string,
@@ -160,8 +230,31 @@ export const App: React.FC = () => {
   const notes = getNotesByDate(selectedDate);
 
   return (
-    <div className={styles.app}>
+    <div
+      ref={containerRef}
+      className={styles.app}
+      style={{
+        backgroundColor,
+        color: textColor,
+        fontSize: `${fontSize}px`,
+        cursor: isDragging ? 'grabbing' : 'grab',
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       <div className={styles.container}>
+        <div className={styles.toolbar} data-draggable="false">
+          <button
+            className={styles.settingsBtn}
+            onClick={() => setIsSettingsOpen(true)}
+            title="위젯 설정"
+          >
+            ⚙️
+          </button>
+        </div>
+
         <div className={styles.left}>
           <Calendar onDateSelect={handleDateSelect} />
         </div>
@@ -169,7 +262,7 @@ export const App: React.FC = () => {
         <div className={styles.right}>
           <div className={styles.header}>
             <h1 className={styles.title}>{selectedDate}</h1>
-            <button className={styles.addButton} onClick={handleNewNote}>
+            <button className={styles.addButton} onClick={handleNewNote} data-draggable="false">
               + 새 메모
             </button>
           </div>
@@ -189,6 +282,8 @@ export const App: React.FC = () => {
         onSave={handleSaveNote}
         onDelete={handleDeleteNote}
       />
+
+      <WidgetSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
       <SyncStatus />
     </div>

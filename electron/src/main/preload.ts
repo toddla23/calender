@@ -16,6 +16,16 @@ const electronAPI = {
       ipcRenderer.removeListener(channel, callback);
     },
   },
+  config: {
+    getConfig: (): Promise<any> => ipcRenderer.invoke('config:get'),
+    updateAppearance: (backgroundColor: string, opacity: number, textColor: string, fontSize: number): Promise<void> =>
+      ipcRenderer.invoke('config:update-appearance', backgroundColor, opacity, textColor, fontSize),
+    updatePosition: (x: number, y: number): Promise<void> =>
+      ipcRenderer.invoke('config:update-position', x, y),
+    onAppearanceUpdated: (callback: (data: any) => void) => {
+      ipcRenderer.on('appearance:updated', (event, data) => callback(data));
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

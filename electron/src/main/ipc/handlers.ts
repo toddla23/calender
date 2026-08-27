@@ -1,18 +1,32 @@
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import { IPC_CRUD_CHANNELS, IPC_SYNC_CHANNELS, IPC_NETWORK_CHANNELS, IPCResponse } from '../../shared/types/IPC';
+import { ipcMain, BrowserWindow } from 'electron';
+import { IPC_CRUD_CHANNELS, IPC_SYNC_CHANNELS, IPC_NETWORK_CHANNELS, IPC_WINDOW_CHANNELS, IPCResponse } from '../../shared/types/IPC';
 import { CrudHandlers } from './crud';
 import { SyncHandlers } from './sync';
 import { NetworkHandlers } from './network';
+import { WindowHandlers } from './window';
+import { SyncEngine } from '../sync/sync-engine';
 
 export class IPCHandlerRegistry {
   private crudHandlers: CrudHandlers;
   private syncHandlers: SyncHandlers;
   private networkHandlers: NetworkHandlers;
+  private windowHandlers: WindowHandlers | null = null;
 
-  constructor() {
+  constructor(mainWindow?: BrowserWindow, syncEngine?: SyncEngine) {
     this.crudHandlers = new CrudHandlers();
-    this.syncHandlers = new SyncHandlers();
+    this.syncHandlers = new SyncHandlers('http://localhost:8080', syncEngine);
     this.networkHandlers = new NetworkHandlers();
+    if (mainWindow) {
+      this.windowHandlers = new WindowHandlers(mainWindow);
+    }
+  }
+
+  setMainWindow(mainWindow: BrowserWindow): void {
+    this.windowHandlers = new WindowHandlers(mainWindow);
+  }
+
+  setSyncEngine(syncEngine: SyncEngine): void {
+    this.syncHandlers.setSyncEngine(syncEngine);
   }
 
   register(): void {
@@ -58,6 +72,25 @@ export class IPCHandlerRegistry {
     ipcMain.handle(IPC_NETWORK_CHANNELS.GET_NETWORK_STATUS, async (event, request) =>
       this.wrapHandler(() => this.networkHandlers.getNetworkStatus(request))
     );
+
+    // Window Handlers
+    if (this.windowHandlers) {
+      ipcMain.handle(IPC_WINDOW_CHANNELS.SET_WINDOW_LEVEL, async (event, request) =>
+        this.wrapHandler(() => this.windowHandlers!.setWindowLevel(request))
+      );
+
+      ipcMain.handle(IPC_WINDOW_CHANNELS.SET_OPACITY, async (event, request) =>
+        this.wrapHandler(() => this.windowHandlers!.setOpacity(request))
+      );
+
+      ipcMain.handle(IPC_WINDOW_CHANNELS.TOGGLE_ALWAYS_ON_TOP, async (event, request) =>
+        this.wrapHandler(() => this.windowHandlers!.toggleAlwaysOnTop())
+      );
+
+      ipcMain.handle(IPC_WINDOW_CHANNELS.GET_WINDOW_STATUS, async (event, request) =>
+        this.wrapHandler(() => this.windowHandlers!.getWindowStatus())
+      );
+    }
   }
 
   private async wrapHandler(handler: () => Promise<any>): Promise<IPCResponse> {

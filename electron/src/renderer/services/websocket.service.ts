@@ -30,7 +30,7 @@ export class WebSocketService {
           Authorization: `Bearer ${accessToken}`,
           'X-User-Id': userId,
         },
-        debug: (str) => {
+        debug: (str: string) => {
           console.log('[WebSocket Debug]', str);
         },
         reconnectDelay: 5000,
@@ -47,7 +47,7 @@ export class WebSocketService {
 
           resolve();
         },
-        onStompError: (frame) => {
+        onStompError: (frame: any) => {
           console.error('WebSocket error:', frame);
           this.isConnected = false;
           reject(new Error(frame.body));
@@ -65,11 +65,12 @@ export class WebSocketService {
   disconnect(): Promise<void> {
     return new Promise((resolve) => {
       if (this.client) {
-        this.client.deactivate(() => {
+        this.client.onDisconnect = () => {
           this.isConnected = false;
           this.client = null;
           resolve();
-        });
+        };
+        this.client.deactivate();
       } else {
         resolve();
       }

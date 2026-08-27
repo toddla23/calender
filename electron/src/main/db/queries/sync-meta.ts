@@ -1,5 +1,5 @@
 import { SQLiteDB } from '../sqlite';
-import { SyncMeta } from '../../shared/types/SyncMeta';
+import { SyncMeta } from '../../../shared/types/SyncMeta';
 
 export class SyncMetaRepository {
   private db: SQLiteDB;

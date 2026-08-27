@@ -1,5 +1,5 @@
 import { SQLiteDB } from '../sqlite';
-import { Note, NoteInput } from '../../shared/types/Note';
+import { Note, NoteInput } from '../../../shared/types/Note';
 import { v4 as uuidv4 } from 'uuid';
 
 export class NotesRepository {

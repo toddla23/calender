@@ -8,6 +8,7 @@ import { TokenManager } from '../api/token-manager';
 import { PushService, PushResponse } from '../../shared/sync-core/push';
 import { PullService, PullResponse } from '../../shared/sync-core/pull';
 import { ConflictResolver } from '../../shared/sync-core/conflict';
+import { SyncEngine } from '../sync/sync-engine';
 
 export class SyncHandlers {
   private syncStatus: SyncStatus = {
@@ -23,12 +24,14 @@ export class SyncHandlers {
   private tokenManager: TokenManager;
   private httpClient: HttpClient | null = null;
   private retryUtil: RetryUtil;
+  private syncEngine: SyncEngine | null = null;
 
-  constructor(backendUrl: string = 'http://localhost:8080') {
+  constructor(backendUrl: string = 'http://localhost:8080', syncEngine?: SyncEngine) {
     this.notesRepo = new NotesRepository();
     this.syncMetaRepo = new SyncMetaRepository();
     this.tokenManager = new TokenManager();
     this.retryUtil = new RetryUtil();
+    this.syncEngine = syncEngine || null;
 
     const config: HttpClientConfig = {
       baseURL: backendUrl,
@@ -39,6 +42,10 @@ export class SyncHandlers {
       config.accessToken = meta.access_token;
     }
     this.httpClient = new HttpClient(config);
+  }
+
+  setSyncEngine(syncEngine: SyncEngine): void {
+    this.syncEngine = syncEngine;
   }
 
   async getSyncStatus(request: any): Promise<SyncStatus> {
@@ -53,12 +60,12 @@ export class SyncHandlers {
     }
 
     try {
-      this.setSyncStatus('pushing', 'push');
+      this.setSyncStatus('pushing');
 
       const unsyncedNotes = this.notesRepo.getUnsyncedNotes();
 
       if (unsyncedNotes.length === 0) {
-        this.setSyncStatus('idle', 'push', null);
+        this.setSyncStatus('idle', null);
         return { success: true, pushed: 0 };
       }
 
@@ -76,7 +83,7 @@ export class SyncHandlers {
       const meta = this.syncMetaRepo.getSyncMeta();
       this.syncMetaRepo.setLastSyncedAt(new Date().toISOString());
 
-      this.setSyncStatus('idle', 'push', null);
+      this.setSyncStatus('idle', null);
 
       return {
         success: successfulIds.length > 0,
@@ -85,7 +92,7 @@ export class SyncHandlers {
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      this.setSyncStatus('idle', 'push', errorMsg);
+      this.setSyncStatus('idle', errorMsg);
       throw error;
     }
   }
@@ -96,7 +103,7 @@ export class SyncHandlers {
     }
 
     try {
-      this.setSyncStatus('pulling', 'pull');
+      this.setSyncStatus('pulling');
 
       let allPulled = 0;
       let hasMore = true;
@@ -161,7 +168,7 @@ export class SyncHandlers {
       }
 
       this.syncMetaRepo.setPullInProgress(false);
-      this.setSyncStatus('idle', 'pull', null);
+      this.setSyncStatus('idle', null);
 
       return {
         success: true,
@@ -170,7 +177,7 @@ export class SyncHandlers {
     } catch (error) {
       this.syncMetaRepo.setPullInProgress(false);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      this.setSyncStatus('idle', 'pull', errorMsg);
+      this.setSyncStatus('idle', errorMsg);
       throw error;
     }
   }
@@ -186,11 +193,21 @@ export class SyncHandlers {
     if (this.httpClient) {
       this.httpClient.setAccessToken(request.accessToken);
     }
+
+    // Initialize WebSocket connection in SyncEngine
+    if (this.syncEngine && request.accessToken && request.userId) {
+      try {
+        await this.syncEngine.setAuthCredentials(request.accessToken, request.userId);
+        console.log('WebSocket authentication credentials set in SyncEngine');
+      } catch (error) {
+        console.error('Failed to initialize WebSocket connection:', error);
+      }
+    }
   }
 
-  private setSyncStatus(syncing: boolean | string, stage: string, error: string | null): void {
+  private setSyncStatus(stage: 'idle' | 'pushing' | 'pulling', error: string | null = null): void {
     this.syncStatus = {
-      syncing: syncing === 'pushing' || syncing === 'pulling',
+      syncing: stage !== 'idle',
       stage,
       error,
       lastSync: error ? null : new Date().toISOString(),

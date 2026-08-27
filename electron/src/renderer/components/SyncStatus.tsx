@@ -30,7 +30,7 @@ export const SyncStatus: React.FC = () => {
           <div className={styles.syncing}>
             <span className={styles.spinner} />
             <span>
-              {stage === 'push' ? '업로드 중...' : stage === 'pull' ? '다운로드 중...' : '동기화 중...'}
+              {stage === 'pushing' ? '업로드 중...' : stage === 'pulling' ? '다운로드 중...' : '동기화 중...'}
             </span>
           </div>
         )}

@@ -1,6 +1,19 @@
 import { BrowserWindow } from 'electron';
 import os from 'os';
 
+// koffi는 선택적 - Windows에서만 필요
+let koffi: any = null;
+try {
+  koffi = require('koffi');
+} catch (error) {
+  // koffi 로드 실패 - Windows가 아니거나 빌드 환경 문제
+}
+
+const HWND_NOTOPMOST = -2;
+const HWND_TOPMOST = -1;
+const SWP_NOSIZE = 0x0001;
+const SWP_NOMOVE = 0x0002;
+
 /**
  * Windows 위젯 배치 관리
  * - 앞뒤로 전환 가능한 오버레이 윈도우
@@ -10,9 +23,33 @@ export class WidgetManager {
   private mainWindow: BrowserWindow | null;
   private isAlwaysOnTop = false;
   private isTransparent = false;
+  private user32: any | null = null;
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
+    this.initializeUser32();
+  }
+
+  private initializeUser32(): void {
+    if (os.platform() !== 'win32') return;
+
+    try {
+      this.user32 = koffi.load('user32.dll');
+    } catch (error) {
+      console.warn('Failed to load user32.dll:', error);
+    }
+  }
+
+  private getWindowHandle(): number | null {
+    if (!this.mainWindow) return null;
+
+    try {
+      const hwnd = this.mainWindow.getNativeWindowHandle().readUInt32LE(0);
+      return hwnd;
+    } catch (error) {
+      console.error('Failed to get window handle:', error);
+      return null;
+    }
   }
 
   toggleAlwaysOnTop(): void {
@@ -59,23 +96,68 @@ export class WidgetManager {
       return;
     }
 
+    if (!this.user32 || !this.mainWindow) {
+      console.warn('user32.dll not loaded or mainWindow is null, using Electron API');
+      this.fallbackSetWindowLevel(level);
+      return;
+    }
+
+    try {
+      const hwnd = this.getWindowHandle();
+      if (!hwnd) {
+        console.warn('Failed to get window handle, using Electron API');
+        this.fallbackSetWindowLevel(level);
+        return;
+      }
+
+      const SetWindowPos = this.user32.func('bool SetWindowPos(void*, void*, int, int, int, int, uint)');
+      let insertAfter: number;
+
+      switch (level) {
+        case 'top':
+          insertAfter = HWND_TOPMOST;
+          break;
+        case 'bottom':
+          insertAfter = 1;
+          break;
+        case 'normal':
+          insertAfter = HWND_NOTOPMOST;
+          break;
+        default:
+          return;
+      }
+
+      SetWindowPos(
+        hwnd,
+        insertAfter,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOSIZE | SWP_NOMOVE
+      );
+
+      console.log(`Window level set to: ${level} (via SetWindowPos)`);
+    } catch (error) {
+      console.error('SetWindowPos failed:', error);
+      this.fallbackSetWindowLevel(level);
+    }
+  }
+
+  private fallbackSetWindowLevel(level: 'top' | 'bottom' | 'normal'): void {
     if (!this.mainWindow) return;
 
-    // TODO: koffi를 사용하여 SetWindowPos 호출
-    // 현재는 setAlwaysOnTop으로 대체
     switch (level) {
       case 'top':
         this.mainWindow.setAlwaysOnTop(true);
         break;
       case 'bottom':
-        this.mainWindow.setAlwaysOnTop(false);
-        break;
       case 'normal':
         this.mainWindow.setAlwaysOnTop(false);
         break;
     }
 
-    console.log(`Window level: ${level}`);
+    console.log(`Window level set to: ${level} (via setAlwaysOnTop fallback)`);
   }
 
   minimize(): void {

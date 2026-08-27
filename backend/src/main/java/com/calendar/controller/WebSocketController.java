@@ -1,6 +1,7 @@
 package com.calendar.controller;
 
 import com.calendar.dto.WebSocketMessage;
+import com.calendar.dto.NoteDto;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;

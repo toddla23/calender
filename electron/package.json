@@ -18,27 +18,32 @@
     "tsc:watch": "tsc --watch"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.12.1",
+    "axios": "^1.6.0",
+    "date-fns": "^2.30.0",
+    "jwt-decode": "^3.1.2",
+    "koffi": "^2.12.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "axios": "^1.6.0",
-    "zustand": "^4.4.1",
-    "date-fns": "^2.30.0",
-    "@react-oauth/google": "^0.12.1",
-    "jwt-decode": "^3.1.2"
+    "zustand": "^4.4.1"
   },
   "devDependencies": {
+    "@stomp/stompjs": "^7.3.0",
+    "@types/better-sqlite3": "^7.6.4",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/sockjs-client": "^1.5.4",
+    "@types/uuid": "^10.0.0",
+    "better-sqlite3": "^9.0.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "react-scripts": "5.0.1",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/node": "^20.0.0",
+    "sockjs-client": "^1.6.1",
     "typescript": "^5.1.0",
-    "concurrently": "^8.2.0",
-    "wait-on": "^7.0.1",
-    "cross-env": "^7.0.3",
-    "better-sqlite3": "^9.0.0",
-    "@types/better-sqlite3": "^7.6.4"
+    "wait-on": "^7.0.1"
   },
   "build": {
     "appId": "com.calendar.app",

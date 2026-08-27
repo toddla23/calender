@@ -1,13 +1,34 @@
+import { ipcMain } from 'electron';
 import { SyncMetaRepository } from '../db/queries/sync-meta';
 import { OAuthService } from '../../renderer/services/oauth.service';
+
+export type TokenRefreshErrorCallback = () => void;
 
 export class TokenManager {
   private syncMetaRepo: SyncMetaRepository;
   private isRefreshing = false;
   private refreshPromise: Promise<string> | null = null;
+  private errorCallbacks: TokenRefreshErrorCallback[] = [];
 
   constructor() {
     this.syncMetaRepo = new SyncMetaRepository();
+  }
+
+  onRefreshError(callback: TokenRefreshErrorCallback): () => void {
+    this.errorCallbacks.push(callback);
+    return () => {
+      this.errorCallbacks = this.errorCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
+  private notifyRefreshError(): void {
+    this.errorCallbacks.forEach((cb) => {
+      try {
+        cb();
+      } catch (error) {
+        console.error('Error in token refresh error callback:', error);
+      }
+    });
   }
 
   getAccessToken(): string | null {
@@ -21,6 +42,7 @@ export class TokenManager {
   async refreshAccessToken(): Promise<string> {
     const refreshToken = this.getRefreshToken();
     if (!refreshToken) {
+      this.notifyRefreshError();
       throw new Error('No refresh token available');
     }
 
@@ -45,6 +67,10 @@ export class TokenManager {
       );
 
       return newAccessToken;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      this.notifyRefreshError();
+      throw error;
     } finally {
       this.isRefreshing = false;
       this.refreshPromise = null;

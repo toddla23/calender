@@ -26,6 +26,8 @@
     "react-native-screens": "^3.22.0",
     "@react-navigation/native": "^6.1.0",
     "@react-navigation/native-stack": "^6.9.0",
+    "@stomp/stompjs": "^7.0.0",
+    "sockjs-client": "^1.6.1",
     "@google-cloud/storage": "^6.9.0"
   },
   "devDependencies": {

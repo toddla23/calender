@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-native-stack/native-stack';
 import { useAuthStore } from './store/auth';
@@ -6,26 +6,43 @@ import { LoginScreen } from './screens/LoginScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { CalendarScreen } from './screens/CalendarScreen';
 import { SyncService } from './services/sync.service';
+import { useNotesStore } from './store/notes';
 
 const Stack = createNativeStackNavigator();
 
 export const App: React.FC = () => {
-  const { isAuthenticated, restoreFromStorage } = useAuthStore();
+  const { isAuthenticated, restoreFromStorage, accessToken, userId } = useAuthStore();
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     restoreFromStorage();
   }, [restoreFromStorage]);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && accessToken && userId) {
+      // Initialize sync service
       SyncService.initialize();
       SyncService.startAutoSync();
+
+      // Set auth credentials for WebSocket
+      SyncService.setAuthCredentials(accessToken, userId);
+
+      // Subscribe to remote changes
+      unsubscribeRef.current = SyncService.onRemoteChange((data) => {
+        console.log('Remote change received:', data);
+        // Store automatically updates in handleRemoteNoteChange
+      });
     }
 
     return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
       SyncService.stopAutoSync();
+      SyncService.disconnectWebSocket();
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, accessToken, userId]);
 
   return (
     <NavigationContainer>

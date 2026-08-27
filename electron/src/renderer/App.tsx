@@ -12,7 +12,7 @@ import styles from './App.module.css';
 
 export const App: React.FC = () => {
   const { selectedDate, getNotesByDate, loadNotes, addNote, updateNote, deleteNote } = useNotesStore();
-  const { isAuthenticated, login, restoreFromStorage } = useAuthStore();
+  const { isAuthenticated, login, logout, restoreFromStorage } = useAuthStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
 
@@ -21,10 +21,56 @@ export const App: React.FC = () => {
   }, [restoreFromStorage]);
 
   useEffect(() => {
+    const handleLogoutRequired = (event: any) => {
+      console.error('Token refresh failed - logging out');
+      logout();
+    };
+
+    const ipcRenderer = (globalThis as any).electron?.ipc;
+    if (ipcRenderer) {
+      ipcRenderer.on('auth:logout-required', handleLogoutRequired);
+      return () => {
+        ipcRenderer.off('auth:logout-required', handleLogoutRequired);
+      };
+    }
+  }, [logout]);
+
+  useEffect(() => {
     if (isAuthenticated) {
       loadNotes(selectedDate);
     }
   }, [selectedDate, loadNotes, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const ipcRenderer = (globalThis as any).electron?.ipc;
+    if (!ipcRenderer) return;
+
+    // Subscribe to remote note changes via WebSocket
+    const unsubscribeCreated = ipcRenderer.on('sync:note-created', (data: any) => {
+      console.log('Remote note created:', data);
+      const note = data.note;
+      addNote(note);
+    });
+
+    const unsubscribeUpdated = ipcRenderer.on('sync:note-updated', (data: any) => {
+      console.log('Remote note updated:', data);
+      const note = data.note;
+      updateNote(note);
+    });
+
+    const unsubscribeDeleted = ipcRenderer.on('sync:note-deleted', (data: any) => {
+      console.log('Remote note deleted:', data);
+      deleteNote(data.noteId);
+    });
+
+    return () => {
+      unsubscribeCreated?.();
+      unsubscribeUpdated?.();
+      unsubscribeDeleted?.();
+    };
+  }, [isAuthenticated, addNote, updateNote, deleteNote]);
 
   const handleLoginSuccess = async (
     accessToken: string,

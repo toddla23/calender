@@ -18,10 +18,13 @@ import java.util.UUID;
 public class SyncController {
     private final SyncService syncService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final WebSocketController webSocketController;
 
-    public SyncController(SyncService syncService, JwtTokenProvider jwtTokenProvider) {
+    public SyncController(SyncService syncService, JwtTokenProvider jwtTokenProvider,
+                        WebSocketController webSocketController) {
         this.syncService = syncService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.webSocketController = webSocketController;
     }
 
     @GetMapping("/pull")
@@ -52,6 +55,24 @@ public class SyncController {
         }
 
         List<SyncResponse.PushResult> results = syncService.pushNotes(userId, noteDtos);
+
+        // Broadcast WebSocket updates for each note
+        for (int i = 0; i < noteDtos.size(); i++) {
+            NoteDto noteDto = noteDtos.get(i);
+            SyncResponse.PushResult result = results.get(i);
+
+            if (result.isSuccess()) {
+                if (noteDto.getDeleted() != null && noteDto.getDeleted()) {
+                    webSocketController.broadcastNoteDeleted(userId.toString(), noteDto.getId().toString());
+                } else if (noteDto.getUpdatedAt() != null) {
+                    // Check if this is an update or create by looking at updatedAt
+                    webSocketController.broadcastNoteUpdated(userId.toString(), noteDto);
+                } else {
+                    webSocketController.broadcastNoteCreated(userId.toString(), noteDto);
+                }
+            }
+        }
+
         return ResponseEntity.ok(results);
     }
 

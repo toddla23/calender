@@ -35,6 +35,14 @@ export const IPC_NETWORK_CHANNELS = {
   ON_NETWORK_CHANGE: 'network:change',
 } as const;
 
+// Window IPC Channels
+export const IPC_WINDOW_CHANNELS = {
+  SET_WINDOW_LEVEL: 'window:set-level',
+  SET_OPACITY: 'window:set-opacity',
+  TOGGLE_ALWAYS_ON_TOP: 'window:toggle-always-on-top',
+  GET_WINDOW_STATUS: 'window:get-status',
+} as const;
+
 // Events
 export const IPC_EVENTS = {
   SYNC_STATUS_CHANGED: 'event:sync-status-changed',
@@ -74,4 +82,12 @@ export interface SetAuthTokensRequest extends IPCRequest {
   refreshToken: string;
   userId: string;
   userEmail: string;
+}
+
+export interface SetWindowLevelRequest extends IPCRequest {
+  level: 'top' | 'bottom' | 'normal';
+}
+
+export interface SetOpacityRequest extends IPCRequest {
+  opacity: number;
 }

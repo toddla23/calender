@@ -6,8 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.security.GeneralSecurityException;
-
 @Component
 @Slf4j
 public class GoogleOAuthValidator {
@@ -16,22 +14,18 @@ public class GoogleOAuthValidator {
 
     public GoogleOAuthValidator(@Value("${app.google.client-id}") String expectedClientId) {
         this.expectedClientId = expectedClientId;
-        try {
-            this.tokenVerifier = TokenVerifier.newBuilder()
-                .setAudience(expectedClientId)
-                .build();
-        } catch (GeneralSecurityException e) {
-            throw new RuntimeException("Failed to initialize TokenVerifier", e);
-        }
+        this.tokenVerifier = TokenVerifier.newBuilder()
+            .setAudience(expectedClientId)
+            .build();
     }
 
     public GoogleOAuthValidator.GoogleIdTokenClaims verifyIdToken(String idToken) throws VerificationException {
         try {
             var idTokenCredential = tokenVerifier.verify(idToken);
-            var claims = idTokenCredential.getAttributes();
+            var claims = idTokenCredential.getPayload();
 
             return GoogleIdTokenClaims.builder()
-                .sub((String) claims.get("sub"))
+                .sub(claims.getSubject())
                 .email((String) claims.get("email"))
                 .emailVerified((Boolean) claims.get("email_verified"))
                 .name((String) claims.get("name"))

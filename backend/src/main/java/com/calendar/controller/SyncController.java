@@ -61,12 +61,12 @@ public class SyncController {
             NoteDto noteDto = noteDtos.get(i);
             SyncResponse.PushResult result = results.get(i);
 
-            if (result.isSuccess()) {
+            if (result.getSuccess()) {
                 if (noteDto.getDeleted() != null && noteDto.getDeleted()) {
                     webSocketController.broadcastNoteDeleted(userId.toString(), noteDto.getId().toString());
                 } else if (noteDto.getUpdatedAt() != null) {
                     // Check if this is an update or create by looking at updatedAt
-                    webSocketController.broadcastNoteUpdated(userId.toString(), noteDto);
+                    webSocketController.broadcastNoteUpdate(userId.toString(), noteDto);
                 } else {
                     webSocketController.broadcastNoteCreated(userId.toString(), noteDto);
                 }

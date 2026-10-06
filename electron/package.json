@@ -10,16 +10,17 @@
     "react-start": "react-scripts start",
     "react-build": "react-scripts build",
     "react-eject": "react-scripts eject",
-    "electron-dev": "concurrently \"npm run react-start\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
-    "electron-build": "npm run react-build && electron-builder",
-    "dev": "npm run electron-dev",
-    "build": "npm run electron-build",
     "tsc": "tsc",
-    "tsc:watch": "tsc --watch"
+    "tsc:watch": "tsc --watch",
+    "electron-dev": "concurrently \"npm run tsc:watch\" \"npm run react-start\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development BACKEND_URL=http://100.84.191.27:8080 electron .\"",
+    "electron-build": "npm run tsc && npm run react-build && electron-builder",
+    "dev": "npm run electron-dev",
+    "build": "npm run electron-build"
   },
   "dependencies": {
     "@react-oauth/google": "^0.12.1",
     "axios": "^1.6.0",
+    "better-sqlite3": "^9.0.0",
     "date-fns": "^2.30.0",
     "jwt-decode": "^3.1.2",
     "koffi": "^2.12.0",
@@ -35,14 +36,13 @@
     "@types/react-dom": "^18.2.0",
     "@types/sockjs-client": "^1.5.4",
     "@types/uuid": "^10.0.0",
-    "better-sqlite3": "^9.0.0",
     "concurrently": "^8.2.0",
     "cross-env": "^7.0.3",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "react-scripts": "5.0.1",
     "sockjs-client": "^1.6.1",
-    "typescript": "^5.1.0",
+    "typescript": "^4.9.5",
     "wait-on": "^7.0.1"
   },
   "build": {
@@ -50,7 +50,7 @@
     "productName": "Calendar Widget",
     "files": [
       "dist/main/**/*",
-      "dist/renderer/**/*",
+      "build/**/*",
       "node_modules/**/*"
     ],
     "directories": {
@@ -59,8 +59,20 @@
     "win": {
       "target": [
         "portable",
-        "installer"
+        "nsis"
       ]
     }
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

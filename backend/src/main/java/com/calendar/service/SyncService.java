@@ -48,7 +48,7 @@ public class SyncService {
             );
         } else {
             page = noteRepository.findByUserIdAndUpdatedAtGreaterThanAndIdGreaterThanOrderByUpdatedAtAscIdAsc(
-                userId, since, cursor, limit + 1
+                userId, since, cursor, limit + 1, pageable
             );
         }
 

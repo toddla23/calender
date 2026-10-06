@@ -32,7 +32,8 @@ public interface NoteRepository extends JpaRepository<Note, UUID> {
         @Param("userId") UUID userId,
         @Param("since") Instant since,
         @Param("cursor") UUID cursor,
-        @Param("limit") int limit
+        @Param("limit") int limit,
+        Pageable pageable
     );
 
     @Modifying

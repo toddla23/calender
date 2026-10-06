@@ -14,8 +14,9 @@ export class IPCHandlerRegistry {
 
   constructor(mainWindow?: BrowserWindow, syncEngine?: SyncEngine) {
     this.crudHandlers = new CrudHandlers();
-    this.syncHandlers = new SyncHandlers('http://localhost:8080', syncEngine);
-    this.networkHandlers = new NetworkHandlers();
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    this.syncHandlers = new SyncHandlers(backendUrl, syncEngine);
+    this.networkHandlers = new NetworkHandlers(backendUrl);
     if (mainWindow) {
       this.windowHandlers = new WindowHandlers(mainWindow);
     }

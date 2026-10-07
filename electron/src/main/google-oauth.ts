@@ -9,6 +9,12 @@ export interface GoogleOAuthConfig {
   clientId: string;
   /** 데스크톱 앱 클라이언트도 토큰 교환 시 시크릿을 요구하는 경우가 있다 */
   clientSecret?: string;
+  /**
+   * 루프백 포트 고정. 비우면 임의 포트(데스크톱 앱 유형 클라이언트용).
+   * '웹 애플리케이션' 유형 클라이언트는 포트까지 일치하는 URI만 허용하므로,
+   * 콘솔에 http://127.0.0.1:{포트}/callback 을 등록하고 같은 포트를 지정한다.
+   */
+  loopbackPort?: number;
 }
 
 export interface GoogleLoginOptions extends GoogleOAuthConfig {
@@ -96,7 +102,7 @@ export async function loginWithGoogle(o: GoogleLoginOptions): Promise<string> {
       });
       server = srv;
       srv.on('error', reject);
-      srv.listen(0, '127.0.0.1', async () => {
+      srv.listen(o.loopbackPort ?? 0, '127.0.0.1', async () => {
         const port = (srv.address() as AddressInfo).port;
         const redirectUri = `http://127.0.0.1:${port}/callback`;
         try {

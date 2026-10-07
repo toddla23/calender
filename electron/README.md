@@ -70,6 +70,13 @@ npm run dev
 
 Google 설정은 환경변수 대신 사용자 데이터 폴더(`%APPDATA%\CalendarWidget\google-oauth.json`)에 둘 수도 있습니다.
 
+**클라이언트 유형별 리디렉션 URI**
+- "데스크톱 앱" 유형: 포트 제한이 없어 별도 등록이 필요 없습니다 (기본: 실행마다 임의 포트).
+- "웹 애플리케이션" 유형: 포트까지 일치하는 URI만 허용하므로 포트를 고정해야 합니다.
+  콘솔의 *승인된 리디렉션 URI*에 `http://127.0.0.1:53682/callback`을 추가하고,
+  `GOOGLE_LOOPBACK_PORT=53682` 환경변수 또는 `google-oauth.json`의 `"loopbackPort": 53682`로 같은 포트를 지정합니다.
+  `redirect_uri_mismatch` 오류는 대부분 이 불일치입니다.
+
 ```json
 { "clientId": "xxxx.apps.googleusercontent.com", "clientSecret": "GOCSPX-..." }
 ```

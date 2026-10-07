@@ -275,9 +275,10 @@ export class AppCore {
 
   // ---- 로그인/로그아웃 ----
 
-  private googleConfig(): (GoogleOAuthConfig & { clientSecret?: string }) | null {
+  private googleConfig(): GoogleOAuthConfig | null {
     let id = process.env.GOOGLE_CLIENT_ID?.trim();
     let secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+    let port = Number(process.env.GOOGLE_LOOPBACK_PORT) || undefined;
     if (!id) {
       try {
         const file = join(this.d.userDataDir, 'google-oauth.json');
@@ -285,12 +286,13 @@ export class AppCore {
           const j = JSON.parse(readFileSync(file, 'utf8'));
           id = j.clientId;
           secret = j.clientSecret ?? secret;
+          port = Number(j.loopbackPort) || port;
         }
       } catch {
         /* 설정 파일 손상: 미설정으로 취급 */
       }
     }
-    return id ? { clientId: id, clientSecret: secret || undefined } : null;
+    return id ? { clientId: id, clientSecret: secret || undefined, loopbackPort: port } : null;
   }
 
   async loginGoogle(): Promise<LoginResult> {

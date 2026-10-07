@@ -1,90 +1,75 @@
 package com.calendar.service;
 
-import com.calendar.dto.AuthResponse;
+import com.calendar.dto.Dtos.AuthResponse;
+import com.calendar.dto.Dtos.UserInfo;
 import com.calendar.entity.User;
+import com.calendar.exception.ApiException;
 import com.calendar.repository.UserRepository;
-import com.calendar.util.GoogleOAuthValidator;
-import com.calendar.util.JwtTokenProvider;
-import com.google.auth.oauth2.TokenVerifier.VerificationException;
-import lombok.extern.slf4j.Slf4j;
+import com.calendar.security.JwtTokenProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
 @Service
-@Slf4j
 public class AuthService {
-    private final UserRepository userRepository;
-    private final JwtTokenProvider jwtTokenProvider;
-    private final GoogleOAuthValidator googleOAuthValidator;
 
-    public AuthService(
-        UserRepository userRepository,
-        JwtTokenProvider jwtTokenProvider,
-        GoogleOAuthValidator googleOAuthValidator
-    ) {
-        this.userRepository = userRepository;
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.googleOAuthValidator = googleOAuthValidator;
+    private final GoogleIdTokenService google;
+    private final UserRepository users;
+    private final JwtTokenProvider tokens;
+    private final boolean devLoginEnabled;
+
+    public AuthService(GoogleIdTokenService google, UserRepository users, JwtTokenProvider tokens,
+                       @Value("${calendar.auth.dev-login-enabled}") boolean devLoginEnabled) {
+        this.google = google;
+        this.users = users;
+        this.tokens = tokens;
+        this.devLoginEnabled = devLoginEnabled;
     }
 
-    @Transactional
-    public AuthResponse authenticateWithGoogle(String idToken) throws VerificationException {
-        var claims = googleOAuthValidator.verifyIdToken(idToken);
-
-        if (!Boolean.TRUE.equals(claims.getEmailVerified())) {
-            throw new IllegalStateException("Email not verified by Google");
-        }
-
-        User user = userRepository.findByGoogleSub(claims.getSub())
-            .orElseGet(() -> {
-                log.info("Creating new user with email: {}", claims.getEmail());
-                User newUser = User.builder()
-                    .email(claims.getEmail())
-                    .googleSub(claims.getSub())
-                    .build();
-                return userRepository.save(newUser);
-            });
-
-        String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getEmail());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId(), user.getEmail());
-
-        return AuthResponse.builder()
-            .accessToken(accessToken)
-            .refreshToken(refreshToken)
-            .user(AuthResponse.UserInfo.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .build())
-            .build();
+    public AuthResponse loginWithGoogle(String idToken) {
+        var identity = google.verify(idToken)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_ID_TOKEN",
+                        "Google 인증에 실패했습니다"));
+        return issue(findOrCreate(identity.sub(), identity.email()));
     }
 
-    public AuthResponse refreshAccessToken(String refreshToken) {
-        if (!jwtTokenProvider.isTokenValid(refreshToken)) {
-            throw new IllegalArgumentException("Invalid refresh token");
+    /** 로컬 개발용: Google 없이 이메일로 로그인. 운영에서는 비활성. */
+    public AuthResponse loginDev(String email) {
+        if (!devLoginEnabled) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "존재하지 않는 경로입니다");
         }
+        return issue(findOrCreate("dev:" + email.toLowerCase(), email.toLowerCase()));
+    }
 
-        UUID userId = jwtTokenProvider.extractUserId(refreshToken);
-        String email = jwtTokenProvider.extractEmail(refreshToken);
+    @Transactional(readOnly = true)
+    public AuthResponse refresh(String refreshToken) {
+        String userId = tokens.parseRefresh(refreshToken)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN",
+                        "Refresh Token이 유효하지 않습니다. 다시 로그인해 주세요"));
+        User user = users.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN",
+                        "Refresh Token이 유효하지 않습니다. 다시 로그인해 주세요"));
+        return issue(user);
+    }
 
-        if (userId == null || email == null) {
-            throw new IllegalArgumentException("Could not extract claims from refresh token");
-        }
+    private User findOrCreate(String sub, String email) {
+        return users.findByGoogleSub(sub).orElseGet(() -> {
+            try {
+                return users.saveAndFlush(new User(email, sub));
+            } catch (DataIntegrityViolationException race) {
+                // 동시 최초 로그인 경합: 먼저 생성된 로우를 사용
+                return users.findByGoogleSub(sub).orElseThrow(() -> race);
+            }
+        });
+    }
 
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
-
-        String newAccessToken = jwtTokenProvider.generateAccessToken(userId, email);
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId, email);
-
-        return AuthResponse.builder()
-            .accessToken(newAccessToken)
-            .refreshToken(newRefreshToken)
-            .user(AuthResponse.UserInfo.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .build())
-            .build();
+    private AuthResponse issue(User user) {
+        return new AuthResponse(
+                tokens.createAccessToken(user.getId(), user.getEmail()),
+                tokens.createRefreshToken(user.getId()),
+                tokens.accessTtlSeconds(),
+                new UserInfo(user.getId(), user.getEmail()));
     }
 }

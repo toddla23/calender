@@ -1,78 +1,82 @@
 {
-  "name": "calendar-electron",
-  "version": "0.1.0",
-  "description": "오프라인 지원 캘린더 애플리케이션 (Windows 위젯)",
-  "main": "dist/main/index.js",
-  "homepage": "./",
-  "author": "Calendar App",
-  "license": "MIT",
+  "name": "calendar-widget",
+  "version": "1.0.0",
+  "private": true,
+  "description": "개인용 캘린더 Windows 위젯 (Electron)",
+  "main": "out/main/index.js",
+  "author": "calendar",
   "scripts": {
-    "react-start": "react-scripts start",
-    "react-build": "react-scripts build",
-    "react-eject": "react-scripts eject",
-    "tsc": "tsc",
-    "tsc:watch": "tsc --watch",
-    "electron-dev": "concurrently \"npm run tsc:watch\" \"npm run react-start\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development BACKEND_URL=http://100.84.191.27:8080 electron .\"",
-    "electron-build": "npm run tsc && npm run react-build && electron-builder",
-    "dev": "npm run electron-dev",
-    "build": "npm run electron-build"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
+    "typecheck:main": "tsc --noEmit -p tsconfig.main.json",
+    "typecheck:renderer": "tsc --noEmit -p tsconfig.renderer.json",
+    "test": "vitest run",
+    "test:integration": "tsx scripts/integration.ts",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
-    "@react-oauth/google": "^0.12.1",
-    "axios": "^1.6.0",
-    "better-sqlite3": "^9.0.0",
-    "date-fns": "^2.30.0",
-    "jwt-decode": "^3.1.2",
-    "koffi": "^2.12.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "zustand": "^4.4.1"
+    "@stomp/stompjs": "^7.0.0",
+    "better-sqlite3": "^12.0.0",
+    "koffi": "^2.9.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@stomp/stompjs": "^7.3.0",
-    "@types/better-sqlite3": "^7.6.4",
-    "@types/node": "^20.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/sockjs-client": "^1.5.4",
-    "@types/uuid": "^10.0.0",
-    "concurrently": "^8.2.0",
-    "cross-env": "^7.0.3",
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.4",
-    "react-scripts": "5.0.1",
-    "sockjs-client": "^1.6.1",
-    "typescript": "^4.9.5",
-    "wait-on": "^7.0.1"
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.7.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.5.12",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
   },
   "build": {
-    "appId": "com.calendar.app",
+    "appId": "com.calendar.widget",
     "productName": "Calendar Widget",
-    "files": [
-      "dist/main/**/*",
-      "build/**/*",
-      "node_modules/**/*"
-    ],
     "directories": {
-      "buildResources": "assets"
+      "output": "dist"
     },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/koffi/**"
+    ],
+    "npmRebuild": true,
     "win": {
       "target": [
-        "portable",
-        "nsis"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
   }
 }

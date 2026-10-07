@@ -1,327 +1,170 @@
-import React, { useEffect, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { Note } from '@calendar/sync-core';
+import { SyncBanner } from '../components/SyncBanner';
+import { noteDotColor, theme } from '../lib/colors';
 import {
-  View,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  Text,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useAuthStore } from '../store/auth';
-import { useNotesStore } from '../store/notes';
-import { NotesService } from '../services/notes.service';
-import { LocalStorageService } from '../services/local-storage.service';
-import { Note } from '../types/Note';
+  WEEKDAYS_KO,
+  buildMonthGrid,
+  formatKoreanMonth,
+  gridRange,
+  monthOf,
+  shiftMonth,
+  todayString,
+  yearsInGrid,
+  type YearMonth,
+} from '../lib/date';
+import type { RootStackParamList } from '../navigation/types';
+import { useHolidayMap, useNotesBetween } from '../state/runtime-context';
 
-export const CalendarScreen: React.FC<any> = ({ navigation, route }) => {
-  const { userId } = useAuthStore();
-  const { notes, addNote, updateNote, deleteNote } = useNotesStore();
-  const [note, setNote] = useState<Partial<Note>>({
-    title: '',
-    content: '',
-    date: new Date(),
-  });
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+type Props = NativeStackScreenProps<RootStackParamList, 'Calendar'>;
 
-  const noteId = route?.params?.noteId;
+export function CalendarScreen({ navigation }: Props) {
+  const [ym, setYm] = useState<YearMonth>(() => monthOf(todayString()));
+  const today = todayString();
+  const grid = useMemo(() => buildMonthGrid(ym), [ym]);
+  const range = useMemo(() => gridRange(ym), [ym]);
+  const years = useMemo(() => yearsInGrid(ym), [ym]);
+  const notes = useNotesBetween(range.from, range.to);
+  const holidays = useHolidayMap(years);
 
-  useEffect(() => {
-    if (noteId) {
-      loadNote(noteId);
+  const byDate = useMemo(() => {
+    const m = new Map<string, Note[]>();
+    for (const n of notes) {
+      const arr = m.get(n.date);
+      if (arr) arr.push(n);
+      else m.set(n.date, [n]);
     }
-  }, [noteId]);
+    return m;
+  }, [notes]);
 
-  const loadNote = (id: string) => {
-    const found = notes.find((n) => n.id === id);
-    if (found) {
-      setNote(found);
-    }
-  };
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setNote({ ...note, date: selectedDate });
-    }
-  };
-
-  const handleSaveNote = async () => {
-    if (!note.title || !note.content || !userId) {
-      Alert.alert('Validation Error', 'Please fill in all fields');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const noteData = {
-        id: note.id || `note-${Date.now()}`,
-        userId,
-        title: note.title,
-        content: note.content,
-        date: note.date || new Date(),
-        createdAt: note.createdAt || new Date(),
-        updatedAt: new Date(),
-        synced: false,
-      };
-
-      if (note.id) {
-        // Update existing note
-        await NotesService.updateNote(note.id, noteData);
-        updateNote(noteData);
-      } else {
-        // Create new note
-        try {
-          // Try to sync with backend first
-          const response = await NotesService.createNote(noteData);
-          noteData.id = response.id;
-          noteData.synced = true;
-        } catch (error) {
-          // Save locally if sync fails
-          console.warn('Failed to sync note, saving locally:', error);
-          noteData.synced = false;
-        }
-
-        // Save locally
-        await LocalStorageService.saveNote(noteData);
-        addNote(noteData);
-      }
-
-      Alert.alert('Success', 'Note saved successfully');
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save note');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteNote = () => {
-    if (!note.id) return;
-
-    Alert.alert('Delete Note', 'Are you sure you want to delete this note?', [
-      { text: 'Cancel', onPress: () => {}, style: 'cancel' },
-      {
-        text: 'Delete',
-        onPress: async () => {
-          try {
-            setLoading(true);
-            await NotesService.deleteNote(note.id!);
-            deleteNote(note.id!);
-            Alert.alert('Success', 'Note deleted successfully');
-            navigation.goBack();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete note');
-          } finally {
-            setLoading(false);
-          }
-        },
-        style: 'destructive',
-      },
-    ]);
-  };
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: '캘린더',
+      headerRight: () => (
+        <View style={styles.headerRight}>
+          <Pressable onPress={() => navigation.navigate('Search')} hitSlop={10}>
+            <Text style={styles.headerBtn}>검색</Text>
+          </Pressable>
+          <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={10}>
+            <Text style={styles.headerBtn}>설정</Text>
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [navigation]);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.headerButton}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {note.id ? 'Edit Note' : 'New Note'}
-        </Text>
-        {note.id && (
-          <TouchableOpacity onPress={handleDeleteNote} disabled={loading}>
-            <Text style={styles.deleteButton}>Delete</Text>
-          </TouchableOpacity>
-        )}
+    <View style={styles.flex}>
+      <SyncBanner />
+      <View style={styles.monthBar}>
+        <Pressable style={styles.navBtn} onPress={() => setYm(shiftMonth(ym, -1))} accessibilityLabel="이전 달">
+          <Text style={styles.navText}>‹</Text>
+        </Pressable>
+        <Text style={styles.monthTitle}>{formatKoreanMonth(ym)}</Text>
+        <Pressable style={styles.navBtn} onPress={() => setYm(shiftMonth(ym, 1))} accessibilityLabel="다음 달">
+          <Text style={styles.navText}>›</Text>
+        </Pressable>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <Text style={styles.label}>Title</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Note title"
-            value={note.title}
-            onChangeText={(text) => setNote({ ...note, title: text })}
-            editable={!loading}
-          />
-        </View>
+      <View style={styles.weekRow}>
+        {WEEKDAYS_KO.map((w, i) => (
+          <Text key={w} style={[styles.weekday, i === 0 && styles.sun, i === 6 && styles.sat]}>
+            {w}
+          </Text>
+        ))}
+      </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Date</Text>
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
-            disabled={loading}
-          >
-            <Text style={styles.dateButtonText}>
-              {note.date?.toLocaleDateString()}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {showDatePicker && (
-          <DateTimePicker
-            value={note.date || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleDateChange}
-          />
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Content</Text>
-          <TextInput
-            style={[styles.input, styles.contentInput]}
-            placeholder="Write your note here..."
-            value={note.content}
-            onChangeText={(text) => setNote({ ...note, content: text })}
-            multiline
-            numberOfLines={8}
-            textAlignVertical="top"
-            editable={!loading}
-          />
-        </View>
-
-        {note.synced === false && (
-          <View style={styles.syncStatus}>
-            <Text style={styles.syncText}>
-              Pending sync (offline)
-            </Text>
+      <View style={styles.grid}>
+        {grid.map((row, r) => (
+          <View key={r} style={styles.row}>
+            {row.map((cell) => {
+              const holiday = holidays.get(cell.date);
+              const list = byDate.get(cell.date) ?? [];
+              const colors = Array.from(new Set(list.map((n) => noteDotColor(n.color)))).slice(0, 4);
+              const red = cell.weekday === 0 || !!holiday;
+              const day = Number(cell.date.slice(8));
+              return (
+                <Pressable
+                  key={cell.date}
+                  style={[styles.cell, cell.date === today && styles.todayCell]}
+                  onPress={() => navigation.navigate('DayDetail', { date: cell.date })}
+                >
+                  <Text
+                    style={[
+                      styles.day,
+                      red ? styles.sun : cell.weekday === 6 ? styles.sat : null,
+                      !cell.inMonth && styles.outMonth,
+                    ]}
+                  >
+                    {day}
+                  </Text>
+                  {!!holiday && (
+                    <Text style={[styles.holiday, !cell.inMonth && styles.outMonth]} numberOfLines={1}>
+                      {holiday}
+                    </Text>
+                  )}
+                  <View style={styles.dots}>
+                    {colors.map((c) => (
+                      <View key={c} style={[styles.dot, { backgroundColor: c }]} />
+                    ))}
+                    {list.length > colors.length && <Text style={styles.more}>+</Text>}
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
-        )}
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-          onPress={handleSaveNote}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Note</Text>
-          )}
-        </TouchableOpacity>
+        ))}
       </View>
-    </KeyboardAvoidingView>
+
+      <View style={styles.bottom}>
+        <Pressable style={styles.todayBtn} onPress={() => setYm(monthOf(today))}>
+          <Text style={styles.todayText}>오늘</Text>
+        </Pressable>
+        <Pressable
+          style={styles.addBtn}
+          onPress={() => navigation.navigate('NoteEdit', { date: today })}
+          accessibilityLabel="오늘 메모 추가"
+        >
+          <Text style={styles.addText}>+ 메모</Text>
+        </Pressable>
+      </View>
+    </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
+  flex: { flex: 1, backgroundColor: theme.bg },
+  headerRight: { flexDirection: 'row', gap: 16 },
+  headerBtn: { color: theme.primary, fontSize: 16 },
+  monthBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 8 },
+  navBtn: { width: 56, height: 44, alignItems: 'center', justifyContent: 'center' },
+  navText: { fontSize: 30, color: theme.text },
+  monthTitle: { fontSize: 20, fontWeight: '700', color: theme.text },
+  weekRow: { flexDirection: 'row', paddingHorizontal: 4 },
+  weekday: { flex: 1, textAlign: 'center', paddingVertical: 6, color: theme.subtext, fontSize: 13 },
+  grid: { flex: 1, paddingHorizontal: 4 },
+  row: { flex: 1, flexDirection: 'row' },
+  cell: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    backgroundColor: '#FFF',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  headerButton: {
-    color: '#4285F4',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    color: '#FF6B6B',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: '#333',
-  },
-  contentInput: {
-    height: 150,
-  },
-  dateButton: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    padding: 12,
-    justifyContent: 'center',
-  },
-  dateButtonText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  syncStatus: {
-    backgroundColor: '#FFF3CD',
-    borderWidth: 1,
-    borderColor: '#FFC107',
-    borderRadius: 8,
-    padding: 12,
-    marginVertical: 16,
-  },
-  syncText: {
-    fontSize: 12,
-    color: '#856404',
-  },
-  footer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: 24,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-  },
-  saveButton: {
-    backgroundColor: '#4285F4',
-    paddingVertical: 14,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  todayCell: { backgroundColor: theme.infoBg },
+  day: { fontSize: 15, color: theme.text },
+  sun: { color: theme.sunday },
+  sat: { color: theme.saturday },
+  outMonth: { opacity: 0.35 },
+  holiday: { fontSize: 9, color: theme.holiday, maxWidth: '100%' },
+  dots: { flexDirection: 'row', marginTop: 3, alignItems: 'center', gap: 2 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  more: { fontSize: 9, color: theme.subtext },
+  bottom: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, paddingBottom: 20 },
+  todayBtn: { paddingHorizontal: 20, paddingVertical: 14, borderRadius: 24, backgroundColor: theme.surface },
+  todayText: { fontWeight: '600', color: theme.text },
+  addBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 24, backgroundColor: theme.primary },
+  addText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

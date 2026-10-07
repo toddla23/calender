@@ -1,72 +1,82 @@
 package com.calendar.entity;
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.UUID;
 
+/**
+ * 읽기 전용 엔티티. 쓰기는 NoteUpsertRepository의 원자적 upsert로만 수행한다
+ * (updated_at은 서버가 UTC_TIMESTAMP(6)로 발급).
+ */
 @Entity
-@Table(name = "notes", indexes = {
-    @Index(name = "idx_notes_user_id_date", columnList = "user_id,date"),
-    @Index(name = "idx_notes_user_id_updated_at", columnList = "user_id,updated_at"),
-    @Index(name = "idx_notes_deleted", columnList = "deleted")
-})
-@Getter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Table(name = "notes")
 public class Note {
+
     @Id
-    @Column(columnDefinition = "UUID")
-    private UUID id;
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(length = 36, nullable = false, updatable = false, insertable = false)
+    private String id;
 
-    @Column(name = "user_id", nullable = false, columnDefinition = "UUID")
-    private UUID userId;
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "user_id", length = 36, nullable = false, updatable = false, insertable = false)
+    private String userId;
 
-    @Column(nullable = false)
+    @Column(name = "date", nullable = false, updatable = false, insertable = false)
     private LocalDate date;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(nullable = false, updatable = false, insertable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(nullable = false, updatable = false, insertable = false)
     private String color;
 
-    @Column(nullable = false)
-    private Boolean deleted = false;
+    @Column(nullable = false, updatable = false, insertable = false)
+    private boolean deleted;
 
-    @Column(name = "deleted_version", nullable = false)
-    private Integer deletedVersion = 0;
+    @Column(name = "deleted_version", nullable = false, updatable = false, insertable = false)
+    private int deletedVersion;
 
-    @Column(name = "updated_at", nullable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
+    @Column(name = "updated_at", nullable = false, updatable = false, insertable = false)
     private Instant updatedAt;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
-    private Instant createdAt;
-
-    @PrePersist
-    protected void onCreate() {
-        Instant now = Instant.now();
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        if (updatedAt == null) {
-            updatedAt = now;
-        }
-        if (deleted == null) {
-            deleted = false;
-        }
-        if (deletedVersion == null) {
-            deletedVersion = 0;
-        }
+    protected Note() {
     }
 
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = Instant.now();
+    public String getId() {
+        return id;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public int getDeletedVersion() {
+        return deletedVersion;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }

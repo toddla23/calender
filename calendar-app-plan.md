@@ -15,7 +15,7 @@
 
 | 항목 | 결정 |
 |---|---|
-| 백엔드 | Spring Boot + PostgreSQL |
+| 백엔드 | Spring Boot + mariadb |
 | 실시간 통신 | WebSocket (STOMP) |
 | 인증 | Google 소셜 로그인(OAuth2) + 자체 JWT 발급 |
 | 데스크톱 클라이언트 | Electron (Windows 상주 위젯) |

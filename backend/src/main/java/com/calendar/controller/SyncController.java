@@ -1,91 +1,54 @@
 package com.calendar.controller;
 
-import com.calendar.dto.NoteDto;
-import com.calendar.dto.SyncResponse;
+import com.calendar.dto.Dtos.PullResponse;
+import com.calendar.dto.Dtos.PushItem;
+import com.calendar.dto.Dtos.PushResult;
 import com.calendar.service.SyncService;
-import com.calendar.util.JwtTokenProvider;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 
+@Validated
 @RestController
 @RequestMapping("/api/sync")
-@Slf4j
 public class SyncController {
-    private final SyncService syncService;
-    private final JwtTokenProvider jwtTokenProvider;
-    private final WebSocketController webSocketController;
 
-    public SyncController(SyncService syncService, JwtTokenProvider jwtTokenProvider,
-                        WebSocketController webSocketController) {
-        this.syncService = syncService;
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.webSocketController = webSocketController;
+    private final SyncService sync;
+
+    public SyncController(SyncService sync) {
+        this.sync = sync;
     }
 
     @GetMapping("/pull")
-    public ResponseEntity<SyncResponse> pullNotes(
-        @RequestHeader("Authorization") String authHeader,
-        @RequestParam(required = false) String since,
-        @RequestParam(required = false) UUID cursor,
-        @RequestParam(defaultValue = "50") int limit
-    ) {
-        UUID userId = extractUserId(authHeader);
-        if (userId == null) {
-            return ResponseEntity.status(401).build();
-        }
-
-        Instant sinceInstant = since != null ? Instant.parse(since) : null;
-        SyncResponse response = syncService.pullNotes(userId, sinceInstant, cursor, limit);
-        return ResponseEntity.ok(response);
+    public PullResponse pull(Authentication auth,
+                             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant since,
+                             @RequestParam(required = false) String cursor,
+                             @RequestParam(required = false) Integer limit) {
+        return sync.pull(auth.getName(), since, cursor, limit);
     }
 
+    /**
+     * 요청 본문은 [{id,date,content,color,deleted,deleted_version}, ...] (최대 500건). origin 식별자(기기 ID + 커넥션 ID)는 헤더로 받아
+     * broadcast 메시지에 실어 보낸다 (에코 루프 방지).
+     */
     @PostMapping("/push")
-    public ResponseEntity<List<SyncResponse.PushResult>> pushNotes(
-        @RequestHeader("Authorization") String authHeader,
-        @RequestBody List<NoteDto> noteDtos
-    ) {
-        UUID userId = extractUserId(authHeader);
-        if (userId == null) {
-            return ResponseEntity.status(401).build();
-        }
-
-        List<SyncResponse.PushResult> results = syncService.pushNotes(userId, noteDtos);
-
-        // Broadcast WebSocket updates for each note
-        for (int i = 0; i < noteDtos.size(); i++) {
-            NoteDto noteDto = noteDtos.get(i);
-            SyncResponse.PushResult result = results.get(i);
-
-            if (result.getSuccess()) {
-                if (noteDto.getDeleted() != null && noteDto.getDeleted()) {
-                    webSocketController.broadcastNoteDeleted(userId.toString(), noteDto.getId().toString());
-                } else if (noteDto.getUpdatedAt() != null) {
-                    // Check if this is an update or create by looking at updatedAt
-                    webSocketController.broadcastNoteUpdate(userId.toString(), noteDto);
-                } else {
-                    webSocketController.broadcastNoteCreated(userId.toString(), noteDto);
-                }
-            }
-        }
-
-        return ResponseEntity.ok(results);
-    }
-
-    private UUID extractUserId(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return null;
-        }
-
-        String token = authHeader.substring(7);
-        if (!jwtTokenProvider.isTokenValid(token)) {
-            return null;
-        }
-
-        return jwtTokenProvider.extractUserId(token);
+    public List<PushResult> push(Authentication auth,
+                                 @RequestBody @NotNull @Size(max = 500) List<@Valid PushItem> items,
+                                 @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+                                 @RequestHeader(value = "X-Connection-Id", required = false) String connectionId) {
+        return sync.push(auth.getName(), items, deviceId, connectionId);
     }
 }

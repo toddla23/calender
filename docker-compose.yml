@@ -1,22 +1,65 @@
-version: '3.8'
-
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: calendar-postgres
+  mariadb:
+    image: mariadb:11.4
+    container_name: calendar-mariadb
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: calendar_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      MARIADB_DATABASE: calendar_db
+      MARIADB_USER: calendar
+      MARIADB_PASSWORD: ${DB_PASSWORD:-calendar}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mariadb_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  # 운영/홈서버용. 로컬 개발은 `docker compose up -d mariadb` 후 gradle bootRun 사용
+  backend:
+    build: ./backend
+    container_name: calendar-backend
+    restart: unless-stopped
+    profiles: ["app"]
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mariadb://mariadb:3306/calendar_db
+      DB_USERNAME: calendar
+      DB_PASSWORD: ${DB_PASSWORD:-calendar}
+      # 32바이트 이상 필수 (비어 있으면 앱이 시작 시 거부)
+      JWT_SECRET: ${JWT_SECRET:-}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      HOLIDAY_API_KEY: ${HOLIDAY_API_KEY:-}
+    # 프록시(Caddy)를 쓰면 8080을 외부에 열지 않고 127.0.0.1로만 바인딩
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  # HTTPS 리버스 프록시. 공유기에서 80/443 → 이 PC로 포트포워딩, DOMAIN은 DDNS 도메인
+  caddy:
+    image: caddy:2
+    container_name: calendar-caddy
+    restart: unless-stopped
+    profiles: ["app"]
+    depends_on:
+      - backend
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
 
 volumes:
-  postgres_data:
+  mariadb_data:
+  caddy_data:
+  caddy_config:

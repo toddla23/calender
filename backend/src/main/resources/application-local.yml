@@ -1,9 +1,0 @@
-calendar:
-  jwt:
-    secret: local-dev-only-secret-local-dev-only-secret-0123456789
-  auth:
-    dev-login-enabled: true
-
-logging:
-  level:
-    com.calendar: DEBUG

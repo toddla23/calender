@@ -1,0 +1,16 @@
+{
+  "name": "deskcal",
+  "private": true,
+  "workspaces": [
+    "server",
+    "web",
+    "desktop"
+  ],
+  "scripts": {
+    "build": "npm run build -w web && npm run build -w server",
+    "test": "npm test -w server && npm test -w web",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build:desktop": "npm run build -w web && npm run tauri -w desktop -- build"
+  }
+}

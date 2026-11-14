@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2f6fde" />
+    <meta name="color-scheme" content="light dark" />
+    <title>바탕 달력</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+  </head>
+  <body>
+    <header class="bar" data-tauri-drag-region>
+      <button id="prev" class="icon-btn" type="button" title="이전 달 (PageUp)" aria-label="이전 달">‹</button>
+      <h1 id="title" data-tauri-drag-region></h1>
+      <button id="next" class="icon-btn" type="button" title="다음 달 (PageDown)" aria-label="다음 달">›</button>
+      <button id="today" class="btn small" type="button">오늘</button>
+      <span class="spacer" data-tauri-drag-region></span>
+      <span id="status" class="status" role="status"></span>
+      <button id="settings" class="icon-btn" type="button" title="설정" aria-label="설정">⚙</button>
+    </header>
+    <div class="weekdays" aria-hidden="true">
+      <span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span>
+    </div>
+    <main id="grid" class="grid" role="grid" aria-label="월간 달력"></main>
+
+    <div id="backdrop" hidden></div>
+    <div id="editor" class="editor" hidden role="dialog" aria-label="메모 편집">
+      <div class="ed-head">
+        <span class="ed-date"></span><span class="ed-hol"></span>
+        <button class="btn small ed-close" type="button">완료</button>
+      </div>
+      <div class="ed-conflict notice warn" hidden>
+        다른 기기와 동시에 고쳐서 두 내용을 합쳤습니다. 정리한 뒤
+        <button type="button" class="btn small">충돌 표시 해제</button>
+      </div>
+      <div class="ed-remote notice" hidden>다른 기기에서 이 칸이 바뀌었습니다. 저장하면 두 내용이 합쳐집니다.</div>
+      <textarea spellcheck="false" aria-label="메모"></textarea>
+      <div class="ed-tools">
+        <div class="swatches" role="group" aria-label="배경색"></div>
+        <button class="btn small ed-history" type="button">이력</button>
+      </div>
+    </div>
+
+    <div id="login" class="login" hidden>
+      <div class="login-card">
+        <h2>바탕 달력</h2>
+        <p class="login-msg"></p>
+        <button id="login-btn" class="btn primary" type="button">Google 계정으로 로그인</button>
+        <button id="login-later" class="btn link" type="button">나중에</button>
+      </div>
+    </div>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -20,7 +20,12 @@ export interface Config {
   tokenIdleDays: number;
   historyKeep: number;
   logLevel: string;
+  /** Android 앱(TWA) 연결용 Digital Asset Links */
+  android: { packageName: string; certSha256: string[] };
 }
+
+// 업로드 키 지문. 플레이스토어 앱 서명을 쓰면 ANDROID_CERT_SHA256 에 Play 서명 키 지문을 추가한다.
+const DEFAULT_ANDROID_CERT = 'B9:29:B1:A3:9B:C0:96:BD:7C:F2:0D:45:17:2E:63:21:4F:30:D8:EC:32:DA:33:F6:B9:56:3E:C9:E8:19:7E:05';
 
 function list(v: string | undefined): string[] {
   return (v ?? '')
@@ -82,6 +87,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     tokenIdleDays: 90,
     historyKeep: Number(env.HISTORY_KEEP ?? 100),
     logLevel: env.LOG_LEVEL ?? 'info',
+    android: {
+      packageName: env.ANDROID_PACKAGE ?? 'io.github.toddla23.batangcalendar',
+      certSha256: [
+        ...new Set(
+          [DEFAULT_ANDROID_CERT, ...(env.ANDROID_CERT_SHA256 ?? '').split(',')]
+            .map((s) => s.trim().toUpperCase())
+            .filter((s) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(s)),
+        ),
+      ],
+    },
   };
   if (!Number.isInteger(cfg.port) || cfg.port <= 0) errors.push('PORT 가 올바르지 않습니다');
   if ([8080, 3306, 5432, 22, 111, 631].includes(cfg.port)) errors.push(`PORT ${cfg.port} 는 사용할 수 없습니다`);

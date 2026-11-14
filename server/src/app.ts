@@ -211,6 +211,17 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     }
   });
 
+  // ---------- Android 앱(TWA) 연결 확인 ----------
+  app.get('/.well-known/assetlinks.json', async (_req, reply) => {
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return [
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: { namespace: 'android_app', package_name: cfg.android.packageName, sha256_cert_fingerprints: cfg.android.certSha256 },
+      },
+    ];
+  });
+
   // ---------- Google 로그인 ----------
   app.get('/auth/google/start', async (req, reply) => {
     const ip = clientIp(req);

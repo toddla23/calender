@@ -1,0 +1,42 @@
+{
+  "packageId": "io.github.toddla23.batangcalendar",
+  "host": "raspberry-pi.tailb6b7a3.ts.net",
+  "name": "바탕 달력",
+  "launcherName": "바탕 달력",
+  "display": "standalone",
+  "themeColor": "#2F6FDE",
+  "themeColorDark": "#17171B",
+  "navigationColor": "#F7F7F9",
+  "navigationColorDark": "#17171B",
+  "navigationDividerColor": "#E2E2E8",
+  "navigationDividerColorDark": "#2F2F37",
+  "backgroundColor": "#F7F7F9",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://raspberry-pi.tailb6b7a3.ts.net/icons/icon-512.png",
+  "maskableIconUrl": "https://raspberry-pi.tailb6b7a3.ts.net/icons/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./upload.jks",
+    "alias": "upload"
+  },
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-core",
+  "webManifestUrl": "https://raspberry-pi.tailb6b7a3.ts.net/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://raspberry-pi.tailb6b7a3.ts.net/",
+  "minSdkVersion": 24,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "displayOverride": []
+}

@@ -63,7 +63,39 @@ curl -s -o /dev/null -w '%{http_code}\n' https://raspberry-pi.tailb6b7a3.ts.net/
 - `PageUp` / `PageDown` 또는 `‹ ›` 로 달을 옮깁니다.
 - ⚙ 설정에서 로그인된 기기 목록 확인·폐기, 임시공휴일 추가, JSON 내보내기/가져오기를 할 수 있습니다.
 
-## 3. 휴대폰 홈 화면에 추가
+## 3. 휴대폰에서 쓰기
+
+### 3-1. Android 앱 (APK)
+
+[BatangCalendar.apk (최신 버전)](https://github.com/toddla23/calender/releases/latest/download/BatangCalendar.apk) 를 휴대폰에서 받아 설치하세요. 처음 한 번은 "출처를 알 수 없는 앱 설치"를 허용해야 합니다.
+
+이 앱은 TWA(Trusted Web Activity)입니다. 휴대폰의 Chrome 으로 웹앱을 주소창 없이 앱 화면처럼 띄웁니다.
+- 화면과 기능은 웹앱과 같고, 서버를 업데이트하면 앱도 바로 바뀝니다.
+- 서버가 `/.well-known/assetlinks.json` 으로 앱 서명 지문을 알려 줘야 주소창이 사라집니다. 서버에 이미 들어 있습니다.
+- Android 7.0 이상, Chrome 이 필요합니다.
+
+**플레이스토어에 올릴 때**: 릴리스의 `BatangCalendar.aab` 를 Play Console 에 업로드하세요. 이때 "Play 앱 서명"을 쓰게 되는데, Play Console → 앱 무결성에 나오는 **앱 서명 키 SHA-256 지문**을 파이 `.env` 의 `ANDROID_CERT_SHA256=` 에 넣고 `docker compose up -d` 하세요. 그래야 스토어에서 받은 앱도 주소창 없이 열립니다. 패키지 이름 `io.github.toddla23.batangcalendar` 는 한 번 올리면 바꿀 수 없습니다.
+
+**서명 키 관리 (중요)**: 업로드 키는 `C:\Users\jonghyeok\.deskcal-android\upload.jks` 에 있고, 비밀번호는 같은 폴더의 `keystore-password.txt` 에 있습니다. 이 키를 잃어버리면 이미 설치된 앱을 업데이트할 수 없습니다. 이 폴더를 USB나 비밀번호 관리자 등 **안전한 곳에 따로 백업**하세요. 저장소에는 절대 넣지 마세요.
+
+GitHub Actions 가 태그마다 APK/AAB 를 빌드하려면 저장소 **Settings → Secrets and variables → Actions → New repository secret** 에 두 개를 등록해야 합니다.
+
+| 이름 | 값 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `.deskcal-android\keystore-base64.txt` 의 내용 전체 |
+| `ANDROID_KEYSTORE_PASSWORD` | `.deskcal-android\keystore-password.txt` 의 내용 |
+
+로컬에서 직접 빌드하려면 (Android Studio 의 SDK 와 JDK 21 필요):
+
+```powershell
+cd android
+$env:ANDROID_KEYSTORE_PATH = "$HOME\.deskcal-android\upload.jks"
+$env:ANDROID_KEYSTORE_PASSWORD = Get-Content "$HOME\.deskcal-android\keystore-password.txt"
+.\gradlew assembleRelease bundleRelease
+# → app\build\outputs\apk\release\app-release.apk, app\build\outputs\bundle\release\app-release.aab
+```
+
+### 3-2. 홈 화면에 추가 (PWA, 앱 설치 없이)
 
 - **Android (Chrome)**: 주소창 오른쪽 ⋮ → **홈 화면에 추가** (또는 "앱 설치")
 - **iPhone (Safari)**: 공유 버튼 → **홈 화면에 추가**

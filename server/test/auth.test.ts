@@ -222,6 +222,14 @@ describe('기기 토큰 관리', () => {
 });
 
 describe('보안 헤더 / CORS / 요청 크기', () => {
+  it('Android 앱 연결용 assetlinks.json 은 인증 없이 제공', async () => {
+    const r = await t.app.inject({ method: 'GET', url: '/.well-known/assetlinks.json' });
+    expect(r.statusCode).toBe(200);
+    const [link] = r.json();
+    expect(link.target.package_name).toBe('io.github.toddla23.batangcalendar');
+    expect(link.target.sha256_cert_fingerprints[0]).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+  });
+
   it('보안 헤더가 붙는다', async () => {
     const r = await t.app.inject({ method: 'GET', url: '/healthz' });
     expect(r.statusCode).toBe(200);

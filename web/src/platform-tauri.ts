@@ -5,18 +5,29 @@ import { Api } from './api';
 import type { KV } from './sync/engine';
 import type { Platform } from './platform';
 import { h, toast } from './dialogs';
+import { lookVars } from './desktop-look';
 
 const DEFAULT_SERVER = 'https://raspberry-pi.tailb6b7a3.ts.net';
 
 export interface DesktopSettings {
   serverUrl: string;
-  opacity: number; // 0.3 ~ 1 (배경 불투명도)
+  opacity: number; // 0 ~ 1 (배경 불투명도, 0 이면 글자만)
+  bgColor: string | null; // 배경색 (null = 시스템 테마)
+  textColor: string | null; // 글자색 (null = 배경에 맞춰 자동)
   fontSize: number; // 메모 글자 크기(px)
   locked: boolean;
   mode: 'desktop' | 'bottom' | 'normal';
 }
 
-const DEFAULTS: DesktopSettings = { serverUrl: DEFAULT_SERVER, opacity: 0.85, fontSize: 12.5, locked: false, mode: 'desktop' };
+const DEFAULTS: DesktopSettings = {
+  serverUrl: DEFAULT_SERVER,
+  opacity: 0.85,
+  bgColor: null,
+  textColor: null,
+  fontSize: 12.5,
+  locked: false,
+  mode: 'desktop',
+};
 
 /** 앱 데이터 폴더의 JSON 파일 (임시 파일 + rename 으로 원자적 저장) */
 class FileKV implements KV {
@@ -48,11 +59,16 @@ export async function createTauriPlatform(): Promise<Platform> {
 
   const save = () => kv.set('settings', settings);
 
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
   function applyLook() {
     const root = document.documentElement.style;
-    root.setProperty('--app-opacity', String(settings.opacity));
+    for (const [k, v] of Object.entries(lookVars(settings, darkQuery.matches))) {
+      if (v === null) root.removeProperty(k);
+      else root.setProperty(k, v);
+    }
     root.setProperty('--cell-font', `${settings.fontSize}px`);
   }
+  darkQuery.addEventListener('change', applyLook);
 
   async function applyLock() {
     // 잠그면 드래그·크기 조절을 막는다
@@ -139,11 +155,34 @@ export async function createTauriPlatform(): Promise<Platform> {
           location.reload();
         });
 
-        const opacity = h('input', { type: 'range', min: '0.3', max: '1', step: '0.05', value: String(settings.opacity) });
+        const opacity = h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(settings.opacity) });
+        const opacityLabel = h('span', { class: 'muted small' }, `${Math.round(settings.opacity * 100)}%`);
         opacity.addEventListener('input', () => {
           settings.opacity = Number(opacity.value);
+          opacityLabel.textContent = `${Math.round(settings.opacity * 100)}%`;
           applyLook();
         });
+
+        // 색 선택: input[type=color] + "기본" 버튼 (null = 자동)
+        const colorField = (key: 'bgColor' | 'textColor', fallback: string, resetLabel: string) => {
+          const input = h('input', { type: 'color', value: settings[key] ?? fallback });
+          const state = h('span', { class: 'muted small' }, settings[key] ? '' : resetLabel);
+          const reset = h('button', { type: 'button', class: 'btn small' }, '기본');
+          input.addEventListener('input', () => {
+            settings[key] = input.value;
+            state.textContent = '';
+            applyLook();
+          });
+          input.addEventListener('change', () => void save());
+          reset.addEventListener('click', () => {
+            settings[key] = null;
+            state.textContent = resetLabel;
+            applyLook();
+            void save();
+          });
+          return [input, reset, state];
+        };
+        const dark = darkQuery.matches;
         opacity.addEventListener('change', () => void save());
 
         const font = h('input', { type: 'range', min: '10', max: '18', step: '0.5', value: String(settings.fontSize) });
@@ -194,7 +233,9 @@ export async function createTauriPlatform(): Promise<Platform> {
             {},
             h('h3', {}, '윈도우 앱'),
             field('서버 주소', server, saveServer),
-            field('배경 불투명도', opacity),
+            field('배경색', ...colorField('bgColor', dark ? '#1f1f24' : '#ffffff', '시스템 테마')),
+            field('글자색', ...colorField('textColor', dark ? '#e8e8ee' : '#1d1d22', '자동')),
+            field('배경 불투명도', opacity, opacityLabel),
             field('글자 크기', font),
             field('표시 방식', mode),
             field('위치·크기 잠금', lock),

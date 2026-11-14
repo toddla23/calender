@@ -599,10 +599,23 @@ html[data-platform='tauri'] body {
 }
 html[data-platform='tauri'] {
   --a: calc(var(--app-opacity) * 100%);
+  /* 배경을 아주 옅게 해도 격자선·오늘 표시는 보이도록 최소값 */
+  --a-line: calc(max(var(--app-opacity), 0.35) * 100%);
+  --text-shadow: none;
 }
 html[data-platform='tauri'] .bar,
 html[data-platform='tauri'] .weekdays {
   background: color-mix(in srgb, var(--bg) var(--a), transparent);
+}
+html[data-platform='tauri'] .bar h1,
+html[data-platform='tauri'] .weekdays,
+html[data-platform='tauri'] .status,
+html[data-platform='tauri'] .cell-head,
+html[data-platform='tauri'] .cell-body {
+  text-shadow: var(--text-shadow);
+}
+html[data-platform='tauri'] .status {
+  border-color: color-mix(in srgb, var(--line) var(--a-line), transparent);
 }
 html[data-platform='tauri'] .bar {
   border-radius: 10px 10px 0 0;
@@ -612,13 +625,24 @@ html[data-platform='tauri'] .bar {
 html[data-platform='tauri'] .weekdays {
   margin: 0 8px;
 }
+/* 격자선을 칸 사이 틈(배경) 대신 칸 테두리로 그려서, 배경이 투명해도 선이 보이게 한다 */
 html[data-platform='tauri'] .grid {
   margin-top: 0;
   border-radius: 0 0 10px 10px;
-  background: color-mix(in srgb, var(--line) var(--a), transparent);
+  gap: 0;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--line) var(--a-line), transparent);
 }
 html[data-platform='tauri'] .cell {
   background: color-mix(in srgb, var(--surface) var(--a), transparent);
+  border-right: 1px solid color-mix(in srgb, var(--line) var(--a-line), transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) var(--a-line), transparent);
+}
+html[data-platform='tauri'] .cell:nth-child(7n) {
+  border-right: 0;
+}
+html[data-platform='tauri'] .cell:nth-last-child(-n + 7) {
+  border-bottom: 0;
 }
 html[data-platform='tauri'] .cell[data-color='red'] { background: color-mix(in srgb, var(--c-red) var(--a), transparent); }
 html[data-platform='tauri'] .cell[data-color='orange'] { background: color-mix(in srgb, var(--c-orange) var(--a), transparent); }

@@ -46,7 +46,7 @@ def twaManifest = [
     // The fallback strategy for when Trusted Web Activity is not available. Possible values are
     // 'customtabs' and 'webview'.
     fallbackType: 'customtabs',
-    enableSiteSettingsShortcut: 'false',
+    enableSiteSettingsShortcut: 'true',
     orientation: 'default',
 ]
 
@@ -59,7 +59,7 @@ android {
         targetSdkVersion 36
         // CI 에서는 태그(v1.2.3)로부터 버전을 넘겨받는다. 플레이스토어는 versionCode 가 매번 커져야 한다.
         versionCode((System.getenv('ANDROID_VERSION_CODE') ?: '1') as int)
-        versionName(System.getenv('ANDROID_VERSION_NAME') ?: "0.1.1")
+        versionName(System.getenv('ANDROID_VERSION_NAME') ?: "0.1.2")
 
         // The name for the application
         resValue "string", "appName", twaManifest.name
@@ -166,7 +166,10 @@ android {
     buildTypes {
         release {
             if (System.getenv('ANDROID_KEYSTORE_PATH')) signingConfig signingConfigs.release
+            // androidbrowserhelper 는 실행 시 ManageDataLauncherActivity 를 이름으로 켠다.
+            // 매니페스트에 그 액티비티가 있어야 하고(enableSiteSettingsShortcut=true), 축소 시 이름이 바뀌지 않게 keep 규칙을 둔다.
             minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {

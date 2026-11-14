@@ -73,6 +73,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://raspberry-pi.tailb6b7a3.ts.net/
 
 ## 4. 윈도우 클라이언트 빌드와 설치
 
+**바로 받기**: [BatangCalendar-setup.exe (최신 버전)](https://github.com/toddla23/calender/releases/latest/download/BatangCalendar-setup.exe) · [모든 릴리스](https://github.com/toddla23/calender/releases)
+
+코드 서명이 없어서 처음 실행할 때 SmartScreen 경고가 뜰 수 있습니다. **추가 정보 → 실행**을 누르세요.
+
 ### 4-1. 윈도우 PC 에서 직접 빌드
 
 준비물(한 번만):
@@ -91,7 +95,13 @@ npm run build:desktop
 
 ### 4-2. GitHub Actions 로 빌드
 
-저장소를 GitHub 에 올린 뒤 **Actions → "Windows 설치 파일 빌드" → Run workflow** 를 누르거나, `v0.1.0` 같은 태그를 푸시하세요. 끝나면 실행 결과의 Artifacts 에서 설치 파일을 받습니다. 테스트 워크플로(`test.yml`)는 MariaDB 컨테이너로 서버·동기화 테스트를 돌리고 arm64 이미지 빌드까지 확인합니다.
+새 버전을 릴리스하려면 버전 태그를 푸시하세요. Actions 가 설치 파일을 빌드해 **Releases** 에 자동으로 첨부합니다.
+
+```bash
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+태그 없이 빌드만 하려면 **Actions → "Windows 설치 파일 빌드" → Run workflow** 를 누르세요. 결과물은 실행 결과의 Artifacts 에 올라갑니다. 앱 안에 표시되는 버전은 `desktop/src-tauri/tauri.conf.json` 의 `version` 입니다. 태그와 맞춰 올려 주세요. 테스트 워크플로(`test.yml`)는 MariaDB 컨테이너로 서버·동기화 테스트를 돌리고 arm64 이미지 빌드까지 확인합니다.
 
 ### 4-3. 설치와 사용
 

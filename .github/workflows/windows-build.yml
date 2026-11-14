@@ -5,6 +5,9 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write # 릴리스 생성·파일 첨부
+
 jobs:
   build:
     runs-on: windows-latest
@@ -39,7 +42,30 @@ jobs:
         shell: pwsh
         run: Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe | ForEach-Object { "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
 
+      # 항상 같은 이름의 사본도 만들어 releases/latest/download/BatangCalendar-setup.exe 링크가 늘 최신을 가리키게 한다
+      - name: 고정 이름 사본
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-release | Out-Null
+          $exe = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          Copy-Item $exe.FullName dist-release/
+          Copy-Item $exe.FullName dist-release/BatangCalendar-setup.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: batang-calendar-windows
-          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: dist-release/*.exe
+
+      - name: GitHub 릴리스에 첨부 (v* 태그일 때)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 바탕 달력 ${{ github.ref_name }}
+          files: dist-release/*.exe
+          generate_release_notes: true
+          body: |
+            ## 설치
+            아래 **BatangCalendar-setup.exe** 를 받아 실행하세요. 관리자 권한 없이 현재 사용자용으로 설치됩니다.
+            처음 실행하면 Google 계정으로 로그인합니다. 서버 주소는 설정 → 윈도우 앱에서 바꿀 수 있습니다.
+
+            코드 서명이 없어 처음 실행할 때 SmartScreen 경고가 뜰 수 있습니다: **추가 정보 → 실행**.

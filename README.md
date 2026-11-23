@@ -1,6 +1,20 @@
 # 바탕 달력
 
-라즈베리파이에서 직접 운영하는 바탕화면 달력입니다. 날짜 칸에 메모를 바로 적고, 윈도우 바탕화면 앱과 휴대폰, 브라우저가 실시간으로 동기화됩니다. Google 계정마다 자기 달력이 따로 있습니다.
+라즈베리파이에서 직접 운영하는 바탕화면 달력입니다. 날짜 칸에 메모를 바로 적고, 윈도우 바탕화면 앱과 휴대폰, 브라우저가 실시간으로 동기화됩니다. Google 계정이 있으면 누구나 가입할 수 있고, 계정마다 자기 달력이 따로 있습니다.
+
+## 시작하기
+
+Google 계정으로 로그인하면 내 달력이 바로 만들어집니다. 세 가지 방법 중 편한 것을 쓰면 되고, 어디서 고쳐도 모두 같은 달력입니다.
+
+| 어디서 | 받기 | 참고 |
+|---|---|---|
+| 브라우저 · iPhone | **https://raspberry-pi.tailb6b7a3.ts.net** | 설치 없이 바로. 휴대폰은 "홈 화면에 추가"하면 앱처럼 열립니다 |
+| 윈도우 | [BatangCalendar-setup.exe](https://github.com/toddla23/calender/releases/latest/download/BatangCalendar-setup.exe) | 처음 실행할 때 SmartScreen 경고가 뜨면 **추가 정보 → 실행** |
+| Android | [BatangCalendar.apk](https://github.com/toddla23/calender/releases/latest/download/BatangCalendar.apk) | 처음 한 번 "출처를 알 수 없는 앱 설치" 허용. Android 7.0 이상, Chrome 필요 |
+
+- 모든 버전: [Releases](https://github.com/toddla23/calender/releases)
+- [서비스 소개](https://raspberry-pi.tailb6b7a3.ts.net/about) · [개인정보처리방침](https://raspberry-pi.tailb6b7a3.ts.net/privacy) · [이용약관](https://raspberry-pi.tailb6b7a3.ts.net/terms)
+- 개인이 집에서 운영하는 무료 서버입니다. 가입은 50명까지이고, 메모·이력 저장 공간은 각각 10MB 입니다. 중요한 내용은 설정 → JSON 내보내기로 따로 보관하세요.
 
 ## 기능
 
@@ -32,7 +46,7 @@
 
 ### 설정과 계정
 - Google 계정으로 로그인하면 그 계정의 달력이 만들어집니다. 다른 사람의 달력은 볼 수 없습니다.
-- 서버 설정에 따라 허용한 계정만 들어오거나, 누구나 가입할 수 있습니다(가입 인원·저장 공간 제한).
+- 누구나 가입할 수 있습니다(가입 인원·저장 공간 제한). 서버 설정으로 허용한 계정만 들어오게 바꿀 수도 있습니다.
 - ⚙ 설정에서 로그인된 내 기기 목록을 보고 폐기할 수 있고, 저장 공간 사용량을 봅니다.
 - **계정 삭제**: 내 메모·이력·기기 정보를 서버에서 모두 지웁니다. 개인정보처리방침은 `/privacy` 에 있습니다.
 - 한 기기에서 다른 계정으로 로그인하면 이전 계정의 캐시를 지우고 새 계정 달력을 받습니다.

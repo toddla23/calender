@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko" translate="no">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <title>관리자 - 바탕 달력</title>
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>바탕 달력 관리자</h1>
+      <span id="generated" class="muted"></span>
+      <span class="spacer"></span>
+      <button id="reload" class="btn" type="button">새로고침</button>
+      <a class="btn" href="/">달력으로</a>
+    </header>
+    <main id="app">
+      <p class="muted">불러오는 중…</p>
+    </main>
+    <div id="tip" class="tip" role="status" hidden></div>
+    <script type="module" src="/src/admin.ts"></script>
+  </body>
+</html>

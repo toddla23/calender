@@ -25,6 +25,8 @@
 | `GET /api/holidays` | 필요 | 공휴일 (고정 + 임시) |
 | `POST /api/holidays` · `DELETE /api/holidays/:date` | `ADMIN_EMAILS` | 임시공휴일 추가 · 삭제 |
 | `GET /api/export` · `POST /api/import` | 필요 | JSON 내보내기 · 가져오기 (6절) |
+| `GET /api/admin/stats` | `ADMIN_EMAILS` | 관리자 통계: 합계, 최근 30일 날짜별 저장·가입, 사용자별 숫자, 서버 상태. 메모 내용 없음 (D-021) |
+| `GET /admin` | 없음 (화면만) | 관리자 화면. 데이터는 위 API 로 받으므로 관리자 세션 쿠키가 있어야 보인다 |
 | `WS /api/ws?ticket=` | 티켓 | 실시간 이벤트 (2.4) |
 
 인증이 필요한 요청은 모두 토큰의 사용자 달력만 다룬다(D-015).

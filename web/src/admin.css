@@ -1,0 +1,283 @@
+/* 관리자 화면 (F18). 달력 화면과 같은 색 토큰을 쓴다. */
+:root {
+  --bg: #f7f7f9;
+  --surface: #ffffff;
+  --text: #1d1d22;
+  --text-2: #4a4a55;
+  --muted: #6b6b76;
+  --line: #e2e2e8;
+  --grid: #ececf0;
+  --accent: #2f6fde;
+  /* 차트 막대 (dataviz 검증: 라이트 #2f6fde, 다크 #5b8ef5) */
+  --viz-1: #2f6fde;
+  --track: #dfe8fb;
+  --warn: #b26a00;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17171b;
+    --surface: #222228;
+    --text: #ececf1;
+    --text-2: #c4c4cd;
+    --muted: #a0a0ab;
+    --line: #34343c;
+    --grid: #2c2c33;
+    --accent: #6b9cff;
+    --viz-1: #5b8ef5;
+    --track: #2b3550;
+    --warn: #f0b24a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+}
+.top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.top h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.spacer {
+  flex: 1;
+}
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+.btn {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+section {
+  margin-top: 24px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* 숫자 타일 */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+.tile .label {
+  color: var(--muted);
+  font-size: 13px;
+}
+.tile .value {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.tile .sub {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* 미터 */
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+  margin-top: 6px;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--viz-1);
+}
+.meter.warn > span {
+  background: var(--warn);
+}
+
+/* 차트 */
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.chart {
+  position: relative;
+  width: 100%;
+  margin-top: 8px;
+}
+.chart svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.chart text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chart .grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+.chart .base {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.chart .bar {
+  fill: var(--viz-1);
+}
+.chart .bar.dim {
+  opacity: 0.45;
+}
+.chart .hit {
+  fill: transparent;
+  cursor: default;
+}
+.chart .hit:focus {
+  outline: none;
+}
+.chart .hit:focus-visible {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.chart .cap {
+  fill: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+details {
+  margin-top: 8px;
+}
+details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tip {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+  white-space: nowrap;
+}
+.tip b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 표 */
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+th {
+  font-weight: 600;
+  color: var(--text-2);
+  font-size: 13px;
+}
+th button {
+  all: unset;
+  cursor: pointer;
+}
+th button:focus-visible {
+  outline: 2px solid var(--accent);
+}
+th[aria-sort] button::after {
+  content: ' ▾';
+  color: var(--muted);
+}
+th[aria-sort='ascending'] button::after {
+  content: ' ▴';
+}
+td .meter {
+  width: 80px;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0 0 8px;
+}
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  margin-left: 6px;
+}
+dl.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+dl.kv dt {
+  color: var(--muted);
+}
+dl.kv dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.notice {
+  padding: 24px;
+  text-align: center;
+}

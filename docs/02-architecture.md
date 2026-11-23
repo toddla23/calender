@@ -25,9 +25,11 @@ server/            Fastify + mysql2 (TypeScript). esbuild 로 단일 파일 번�
   src/users.ts     사용자 만들기·기존 달력 넘겨받기·계정 삭제
   src/auth.ts      Google OAuth(PKCE), 기기 토큰, 로그인 시도 제한, op 속도 제한, X-Forwarded-For
   src/pages.ts     공개 페이지: 소개(/about)·이용약관(/terms)·공통 레이아웃
+  src/admin.ts     관리자 통계 (/api/admin/stats)
   src/privacy.ts   개인정보처리방침 (/privacy)
   src/backup.ts    매일 mariadb-dump 백업
 web/               바닐라 TypeScript + Vite. PWA 와 Tauri 가 같은 코드를 씀
+  admin.html, src/admin.ts  관리자 화면 (/admin, 달력과 별도 번들, 오프라인 캐시에 넣지 않음)
   src/sync/engine.ts  오프라인 큐 + 캐시 + WebSocket 재연결 (DOM 없음, Node 테스트 가능)
 desktop/src-tauri/ Tauri v2 (Rust): 바탕화면 부착(Win32), 트레이, 자동 실행, 파일 저장소, DPAPI
 android/           TWA 앱 (패키지 io.github.toddla23.batangcalendar)

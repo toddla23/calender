@@ -153,6 +153,17 @@ export async function showSettings(
       h('p', {}, me ? `${me.email} (${me.device.name})` : '오프라인'),
       ...(usage ? [h('p', { class: 'muted small' }, usage)] : []),
       h('div', { class: 'btn-row' }, logoutBtn, deleteBtn),
+      ...(me?.admin
+        ? [
+            h(
+              'p',
+              { class: 'small' },
+              api.opts.base
+                ? `관리자 화면: ${api.opts.base}/admin (브라우저에서 로그인 후)`
+                : h('a', { href: '/admin', target: '_blank', rel: 'noopener' }, '관리자 화면 (사용자·사용량 통계)'),
+            ),
+          ]
+        : []),
       h('p', { class: 'muted small' }, privacy),
     ),
   );

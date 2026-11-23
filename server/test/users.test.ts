@@ -221,6 +221,32 @@ describe('누구나 가입', () => {
   });
 });
 
+describe('관리자 통계 (F18)', () => {
+  it('관리자만 볼 수 있고, 사용자별 숫자만 있고 메모 내용은 없다', async () => {
+    t = await startTestServer(OPEN_ENV);
+    const admin = await t.token('ADMIN', ALLOWED);
+    const u = await t.token('U', 'user@example.com');
+    await push(u, [{ opId: uuid(), date: '2026-11-01', baseVersion: 0, content: '비밀 메모 내용' }]);
+    await push(u, [{ opId: uuid(), date: '2026-11-02', baseVersion: 0, content: '두번째' }]);
+    expect((await get(u, '/api/admin/stats')).statusCode).toBe(403);
+    const r = await get(admin, '/api/admin/stats');
+    expect(r.statusCode).toBe(200);
+    expect(r.body).not.toContain('비밀 메모 내용');
+    const s = r.json();
+    expect(s.totals.users).toBe(2);
+    expect(s.totals.notes).toBe(2);
+    expect(s.totals.edits7d).toBe(2);
+    expect(s.daily).toHaveLength(30);
+    expect(s.daily.at(-1).edits).toBe(2);
+    expect(s.daily.at(-1).signups).toBe(2);
+    const row = s.users.find((x: any) => x.email === 'user@example.com');
+    expect(row).toMatchObject({ admin: false, notes: 2, edits7d: 2, edits30d: 2, devices: 1 });
+    expect(row.noteBytes).toBeGreaterThan(0);
+    expect(s.users.find((x: any) => x.email === ALLOWED).admin).toBe(true);
+    expect(s.server.dbBytes).toBeGreaterThan(0);
+  });
+});
+
 describe('용량·속도 제한 (관리자가 아닌 사용자)', () => {
   const big = (ch: string) => ch.repeat(60 * 1024);
 

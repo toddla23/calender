@@ -31,6 +31,7 @@ import { registerDataRoutes } from './dataRoutes.js';
 import { UserStore, type User } from './users.js';
 import { privacyPage } from './privacy.js';
 import { PAGES_CSS, aboutPage, termsPage } from './pages.js';
+import { adminStats } from './admin.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -456,6 +457,12 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     });
 
     registerDataRoutes(api, { sync, holidays, hub, isAdmin, quotaFor, takeOps });
+
+    // 관리자 통계 (보기 전용, 메모 내용 없음, D-021)
+    api.get('/api/admin/stats', async (req, reply) => {
+      if (!isAdmin(req.device)) return reply.code(403).send({ error: '관리자만 볼 수 있습니다' });
+      return adminStats(pool, cfg);
+    });
   });
 
   // ---------- WebSocket (handshake 에서 일회용 티켓 검사) ----------
@@ -497,6 +504,8 @@ export async function buildApp(opts: AppOptions): Promise<App> {
         else res.header('Cache-Control', 'no-cache');
       },
     });
+    // 관리자 화면. 권한은 화면이 부르는 /api/admin/stats 에서 검사한다
+    app.get('/admin', async (_req, reply) => reply.header('Cache-Control', 'no-cache').sendFile('admin.html'));
     app.setNotFoundHandler((req, reply) => {
       // 화면 경로만 index.html 로. API·정적 자원(확장자 있는 경로)이 없으면 404
       const pathOnly = req.url.split('?')[0];

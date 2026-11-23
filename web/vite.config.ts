@@ -8,7 +8,8 @@ function serviceWorker(): Plugin {
     apply: 'build',
     generateBundle(_opts, bundle) {
       const files = Object.keys(bundle).filter((f) => !f.endsWith('.map'));
-      const assets = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', ...files.filter((f) => f !== 'index.html').map((f) => '/' + f)];
+      // 관리자 화면은 오프라인 캐시에 넣지 않는다
+      const assets = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', ...files.filter((f) => !f.endsWith('.html') && !/^assets\/admin-/.test(f)).map((f) => '/' + f)];
       const version = crypto.createHash('sha256').update(files.sort().join('|')).digest('hex').slice(0, 10);
       const sw = `// 자동 생성됨
 const CACHE = 'deskcal-${version}';
@@ -38,7 +39,13 @@ self.addEventListener('fetch', (e) => {
 
 export default defineConfig({
   plugins: [serviceWorker()],
-  build: { target: 'es2022', sourcemap: false, assetsInlineLimit: 0 },
+  build: {
+    target: 'es2022',
+    sourcemap: false,
+    assetsInlineLimit: 0,
+    // 달력(index.html)과 관리자 화면(admin.html, F18)
+    rollupOptions: { input: { main: 'index.html', admin: 'admin.html' } },
+  },
   server: {
     proxy: {
       '/api': { target: 'http://127.0.0.1:3000', ws: true },

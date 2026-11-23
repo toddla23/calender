@@ -7,8 +7,10 @@ import { HttpError, SyncEngine, type SocketLike, type Transport } from '../src/s
 import { MemoryKV } from '../src/sync/kv-idb';
 
 let t: TestCtx;
+const OTHER = 'other@example.com';
 beforeAll(async () => {
-  t = await startTestServer();
+  // 두 번째 사용자(OTHER)는 계정 전환 시나리오에서 쓴다
+  t = await startTestServer({ ALLOWED_EMAILS: `me@example.com,${OTHER}`, ADMIN_EMAILS: 'me@example.com' });
 });
 afterAll(async () => t?.close());
 
@@ -249,5 +251,57 @@ describe('동기화 시나리오', () => {
     await a.api.revokeDevice(me);
     await waitFor(() => a.engine.status === 'unauthorized', 3000, '폐기 감지');
     a.engine.stop();
+  });
+
+  it('같은 기기에서 다른 계정으로 바뀌면 이전 계정의 캐시·큐가 새 계정 달력에 섞이지 않는다', async () => {
+    const kv = new MemoryKV();
+    let tok = await t.token('공용 PC', 'me@example.com');
+    const api = new Api({ base: t.url, getToken: () => tok });
+    const net = new FlakyNet(api);
+    let changed = 0;
+    const e1 = new SyncEngine(kv, net, { accountChanged: () => changed++ }, { cacheDelayMs: 10, baseBackoffMs: 20, maxBackoffMs: 100 });
+    api.opts.expectUser = () => e1.owner;
+    await e1.init();
+    await e1.setOwner((await api.me()).email);
+    e1.start();
+    await waitFor(() => e1.status === 'online');
+    await e1.edit('2026-07-01', { content: '주인 메모' });
+    await waitFor(() => e1.pendingCount() === 0);
+    net.setOnline(false);
+    await waitFor(() => e1.status !== 'online');
+    await e1.edit('2026-07-02', { content: '주인 미전송' });
+    e1.stop();
+    await e1.saveCache();
+
+    // 같은 저장소로 다른 계정 토큰을 쓰게 됨 (다른 탭에서 다른 계정으로 로그인한 경우)
+    tok = await t.token('공용 PC', OTHER);
+    const e2 = new SyncEngine(kv, net, { accountChanged: () => changed++ }, { cacheDelayMs: 10, baseBackoffMs: 20, maxBackoffMs: 100 });
+    api.opts.expectUser = () => e2.owner;
+    await e2.init();
+    expect(e2.owner).toBe('me@example.com');
+    expect(e2.pendingCount()).toBe(1);
+    net.setOnline(true);
+    e2.start();
+    // 서버가 409 로 거부하고 엔진이 멈춘다 → 앱은 다시 시작해서 계정을 확인한다
+    await waitFor(() => changed > 0, 3000, '계정 변경 감지');
+    expect(e2.pendingCount()).toBe(1);
+
+    // 다시 시작: me() 로 계정 확인 → 캐시·큐를 비우고 새 계정으로
+    const r = await e2.setOwner((await api.me()).email);
+    expect(r).toEqual({ reset: true, dropped: 1 });
+    e2.start();
+    await waitFor(() => e2.status === 'online');
+    expect(e2.view('2026-07-01').content).toBe('');
+    const other = await api.pull(0);
+    expect(other.notes.map((n) => n.content)).not.toContain('주인 미전송');
+    expect(other.notes.map((n) => n.content)).not.toContain('주인 메모');
+    e2.stop();
+
+    // 주인 달력은 그대로
+    const ownerTok = await t.token('확인', 'me@example.com');
+    const ownerApi = new Api({ base: t.url, getToken: () => ownerTok });
+    const mine = await ownerApi.pull(0);
+    expect(mine.notes.find((n) => n.date === '2026-07-01')?.content).toBe('주인 메모');
+    expect(mine.notes.find((n) => n.date === '2026-07-02')).toBeUndefined();
   });
 });

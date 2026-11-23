@@ -91,7 +91,17 @@ export interface SettingsExtras {
   render?: () => Node[];
 }
 
-export async function showSettings(api: Api, engine: SyncEngine, me: Me | null, logout: () => Promise<void>, extras: SettingsExtras = {}) {
+const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(bytes < 1024 * 1024 ? 2 : 1)}MB`;
+
+export async function showSettings(
+  api: Api,
+  engine: SyncEngine,
+  me: Me | null,
+  logout: () => Promise<void>,
+  extras: SettingsExtras = {},
+  /** 계정을 지운 뒤 이 기기의 로컬 데이터를 정리하고 다시 시작한다 */
+  afterAccountDeleted: () => Promise<void> = async () => location.reload(),
+) {
   const sections: Node[] = [];
 
   // 계정
@@ -100,8 +110,51 @@ export async function showSettings(api: Api, engine: SyncEngine, me: Me | null, 
     if (!confirm('이 기기에서 로그아웃할까요? 보내지 못한 수정이 있으면 사라집니다.')) return;
     await logout();
   });
+  const deleteBtn = h('button', { type: 'button', class: 'btn danger' }, '계정 삭제');
+  deleteBtn.disabled = !me;
+  deleteBtn.addEventListener('click', async () => {
+    if (!me) return;
+    const typed = prompt(
+      `계정을 삭제하면 이 계정의 메모·이력·로그인된 기기가 서버에서 모두 지워지고 되돌릴 수 없습니다.
+` +
+        `필요하면 먼저 JSON 내보내기로 받아 두세요.
+
+삭제하려면 이메일(${me.email})을 입력하세요.`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== me.email) return toast('이메일이 맞지 않아 삭제하지 않았습니다.', 'error');
+    try {
+      await api.deleteAccount(me.email);
+      await afterAccountDeleted();
+    } catch (e) {
+      toast(`계정 삭제 실패: ${(e as Error).message}`, 'error');
+    }
+  });
+  const usage = me
+    ? me.quota === null
+      ? `사용량: 메모 ${mb(me.usage.noteBytes)}, 이력 ${mb(me.usage.historyBytes)} (관리자, 제한 없음)`
+      : `사용량: 메모 ${mb(me.usage.noteBytes)} / ${mb(me.quota)}, 이력 ${mb(me.usage.historyBytes)} / ${mb(me.quota)} (이력은 넘치면 오래된 것부터 지움)`
+    : '';
+  // 윈도우 앱(base 가 있음)은 링크를 시스템 브라우저로 열 수 없어서 주소를 글자로 보여 준다
+  const privacy = api.opts.base
+    ? h('span', {}, `개인정보처리방침·이용약관: ${api.opts.base}/privacy, ${api.opts.base}/terms`)
+    : h(
+        'span',
+        {},
+        h('a', { href: '/privacy', target: '_blank', rel: 'noopener' }, '개인정보처리방침'),
+        ' · ',
+        h('a', { href: '/terms', target: '_blank', rel: 'noopener' }, '이용약관'),
+      );
   sections.push(
-    h('section', {}, h('h3', {}, '계정'), h('p', {}, me ? `${me.email} (${me.device.name})` : '오프라인'), logoutBtn),
+    h(
+      'section',
+      {},
+      h('h3', {}, '계정'),
+      h('p', {}, me ? `${me.email} (${me.device.name})` : '오프라인'),
+      ...(usage ? [h('p', { class: 'muted small' }, usage)] : []),
+      h('div', { class: 'btn-row' }, logoutBtn, deleteBtn),
+      h('p', { class: 'muted small' }, privacy),
+    ),
   );
 
   // 기기
@@ -122,7 +175,7 @@ export async function showSettings(api: Api, engine: SyncEngine, me: Me | null, 
           return h(
             'div',
             { class: 'row' },
-            h('div', {}, h('b', {}, d.name), h('div', { class: 'muted small' }, `${d.email} · 마지막 사용 ${formatDateTime(d.lastUsedAt)}${d.lastIp ? ' · ' + d.lastIp : ''}`)),
+            h('div', {}, h('b', {}, d.name), h('div', { class: 'muted small' }, `마지막 사용 ${formatDateTime(d.lastUsedAt)}${d.lastIp ? ' · ' + d.lastIp : ''}`)),
             b,
           );
         }),
@@ -172,7 +225,13 @@ export async function showSettings(api: Api, engine: SyncEngine, me: Me | null, 
     }
   });
   sections.push(
-    h('section', {}, h('h3', {}, '임시공휴일'), holBox, me?.admin ? hForm : h('p', { class: 'muted small' }, '관리자만 추가할 수 있습니다.')),
+    h(
+      'section',
+      {},
+      h('h3', {}, '임시공휴일'),
+      holBox,
+      me?.admin ? hForm : h('p', { class: 'muted small' }, '임시공휴일은 모든 사용자가 함께 보며, 관리자만 추가할 수 있습니다.'),
+    ),
   );
 
   // 데이터

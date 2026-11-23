@@ -35,6 +35,7 @@ git tag v0.1.1 && git push origin v0.1.1
 
 - 윈도우 앱 안에 표시되는 버전은 `desktop/src-tauri/tauri.conf.json`의 `version`이다. 태그와 맞춰 올린다.
 - Android `versionCode`는 태그에서 계산한다(`v1.2.3` → `10203`).
+- Android 앱(TWA)은 서버의 웹 코드를 그대로 쓰므로 서버만 업데이트하면 된다. 윈도우 앱은 `web/`을 설치 파일에 넣으므로 화면 코드가 바뀌면 새로 릴리스한다. 예전 윈도우 앱도 새 서버에 붙지만, 계정 전환 보호(03-protocol 3.1)·사용량·계정 삭제는 새 앱부터 된다.
 
 ## 4. 윈도우 앱
 

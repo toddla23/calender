@@ -59,11 +59,15 @@ export interface EngineEvents {
   status?: (s: Status) => void;
   holidays?: () => void;
   message?: (text: string, kind: 'info' | 'warn' | 'error') => void;
+  /** 서버가 이 기기의 로그인 계정이 캐시 주인과 다르다고 알림(409). 다시 시작해서 계정을 확인해야 한다 */
+  accountChanged?: () => void;
 }
 
 interface Cache {
   lastSeq: number;
   notes: Note[];
+  /** 이 캐시와 큐의 주인 계정 (사용자별 달력, D-015) */
+  owner?: string;
 }
 
 const PUSH_BATCH = 50;
@@ -84,6 +88,8 @@ export class SyncEngine {
   lastSeq = 0;
   holidays: Holiday[] = [];
   status: Status = 'offline';
+  /** 캐시 주인 이메일. 모르면 null (처음 로그인 전, 예전 버전 캐시) */
+  owner: string | null = null;
 
   private sock: SocketLike | null = null;
   private syncing = false;
@@ -108,10 +114,30 @@ export class SyncEngine {
     const cache = await this.kv.get<Cache>('cache');
     if (cache) {
       this.lastSeq = cache.lastSeq;
+      this.owner = cache.owner ?? null;
       for (const n of cache.notes) this.server.set(n.date, n);
     }
     this.queue = (await this.kv.get<QueueEntry[]>('queue')) ?? [];
     this.holidays = (await this.kv.get<Holiday[]>('holidays')) ?? [];
+  }
+
+  /**
+   * 로그인한 계정을 알려 준다. 캐시 주인과 다르면 캐시와 큐를 비운다(다른 사람 달력에 섞이지 않게).
+   * reset: 비웠는지, dropped: 버린 미전송 수정 개수. start() 전에 부른다.
+   */
+  async setOwner(email: string): Promise<{ reset: boolean; dropped: number }> {
+    if (this.owner === email) return { reset: false, dropped: 0 };
+    const reset = this.owner !== null;
+    const dropped = reset ? this.queue.length : 0;
+    if (reset) {
+      this.server.clear();
+      this.queue = [];
+      this.lastSeq = 0;
+      await this.saveQueue();
+    }
+    this.owner = email;
+    await this.saveCache();
+    return { reset, dropped };
   }
 
   hasCache(): boolean {
@@ -232,6 +258,7 @@ export class SyncEngine {
         this.setStatus('unauthorized');
         return;
       }
+      if (this.isAccountChanged(e)) return;
       this.setStatus('offline');
       this.scheduleReconnect();
       return;
@@ -258,6 +285,7 @@ export class SyncEngine {
     try {
       // 재연결 순서: 1) 큐 전송 2) 놓친 변경분 받기 3) 그동안 쌓인 실시간 이벤트 적용
       await this.flush();
+      if (this.stopped) return; // 계정이 바뀌어 멈춘 경우
       await this.pullAll();
       await this.loadHolidays();
       this.syncing = false;
@@ -273,6 +301,7 @@ export class SyncEngine {
         sock.close();
         return;
       }
+      if (this.isAccountChanged(e)) return;
       this.socketGone(sock);
       sock.close();
     }
@@ -301,6 +330,14 @@ export class SyncEngine {
       this.retryTimer = null;
       void this.connect();
     }, delay);
+  }
+
+  /** 409: 토큰의 계정이 캐시 주인과 다르다 → 더 보내지 말고 멈춘다 */
+  private isAccountChanged(e: unknown): boolean {
+    if (!(e instanceof HttpError && e.status === 409)) return false;
+    this.stop();
+    this.on.accountChanged?.();
+    return true;
   }
 
   private async handleEvent(ev: ServerEvent) {
@@ -359,7 +396,7 @@ export class SyncEngine {
             );
           } catch (e) {
             if (e instanceof HttpError && e.status === 401) this.setStatus('unauthorized');
-            else this.dropConnection();
+            else if (!this.isAccountChanged(e)) this.dropConnection();
             return;
           }
           const changed: string[] = [];
@@ -453,6 +490,10 @@ export class SyncEngine {
       this.cacheTimer = null;
     }
     // lastSeq 와 notes 를 한 번에 저장해서 둘이 어긋나지 않게 한다
-    await this.kv.set('cache', { lastSeq: this.lastSeq, notes: [...this.server.values()] } satisfies Cache);
+    await this.kv.set('cache', {
+      lastSeq: this.lastSeq,
+      notes: [...this.server.values()],
+      ...(this.owner ? { owner: this.owner } : {}),
+    } satisfies Cache);
   }
 }

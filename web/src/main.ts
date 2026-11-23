@@ -14,6 +14,10 @@ async function main() {
   document.documentElement.dataset.platform = platform.kind;
   const statusEl = $('status');
   const loginEl = $('login');
+  if (platform.api.opts.base) {
+    // 윈도우 앱: 링크를 열 수 없으므로 서버의 소개·약관 주소를 글자로
+    $('login-links').textContent = `서비스 소개·개인정보처리방침·이용약관: ${platform.api.opts.base}/about`;
+  }
   let me: Me | null = null;
 
   const engine = new SyncEngine(platform.kv, platform.api, {
@@ -28,8 +32,11 @@ async function main() {
     },
     holidays: () => cal.setHolidays(engine.holidays),
     message: (text, kind) => toast(text, kind, kind === 'warn' ? 8000 : 4000),
+    // 다른 탭·창에서 다른 계정으로 로그인했다 → 다시 시작해서 계정을 확인한다
+    accountChanged: () => location.reload(),
   });
   await engine.init();
+  platform.api.opts.expectUser = () => engine.owner;
 
   const holidayName = (date: string) =>
     engine.holidays
@@ -50,11 +57,26 @@ async function main() {
   }
   renderStatus();
 
+  /** 로그인한 계정으로 캐시 주인을 맞춘다. 다른 계정이면 이 기기의 캐시와 큐를 비운다 */
+  async function adoptAccount(m: Me) {
+    const { reset, dropped } = await engine.setOwner(m.email);
+    if (!reset) return;
+    cal.build();
+    renderStatus();
+    toast(
+      dropped
+        ? `다른 계정으로 로그인해서 이전 계정의 캐시를 지웠습니다. 보내지 못한 수정 ${dropped}건도 지웠습니다.`
+        : '다른 계정으로 로그인해서 이전 계정의 캐시를 지웠습니다.',
+      'warn',
+      8000,
+    );
+  }
+
   function showLogin(expired: boolean) {
     loginEl.hidden = false;
     loginEl.querySelector('.login-msg')!.textContent = expired
       ? '로그인이 만료됐습니다. 다시 로그인하면 보내지 못한 수정도 함께 전송됩니다.'
-      : '본인 Google 계정으로 로그인하세요.';
+      : 'Google 계정으로 로그인하세요. 계정마다 따로 달력이 만들어집니다.';
     // 캐시가 있으면 달력을 보면서 나중에 로그인할 수 있게
     loginEl.classList.toggle('overlay', !engine.hasCache());
   }
@@ -64,6 +86,7 @@ async function main() {
       loginEl.hidden = true;
       me = await platform.api.me().catch(() => null);
       engine.stop();
+      if (me) await adoptAccount(me);
       engine.start();
     } catch (e) {
       toast(`로그인 실패: ${(e as Error).message}`, 'error');
@@ -87,6 +110,11 @@ async function main() {
         location.reload();
       },
       platform.settingsExtras,
+      async () => {
+        engine.stop();
+        await platform.clearLocal();
+        location.reload();
+      },
     ),
   );
   document.addEventListener('keydown', (e) => {
@@ -117,6 +145,7 @@ async function main() {
   }
   try {
     me = await platform.api.me();
+    await adoptAccount(me);
   } catch (e) {
     if (e instanceof HttpError && e.status === 401) {
       showLogin(engine.hasCache());

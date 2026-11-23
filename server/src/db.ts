@@ -22,7 +22,8 @@ export function createPool(cfg: Config): Pool {
 }
 
 /** 서버 시작 시 SQL 마이그레이션을 자동 적용한다 (postgrator). */
-export async function migrate(cfg: Config): Promise<void> {
+/** to: 이 버전까지만 적용 (테스트용). 없으면 최신까지 */
+export async function migrate(cfg: Config, to?: string): Promise<void> {
   // 마이그레이션 파일은 여러 문장이 들어 있어서 전용 연결에서만 multipleStatements 를 켠다.
   const conn = await mysql.createConnection({
     host: cfg.db.host,
@@ -44,7 +45,7 @@ export async function migrate(cfg: Config): Promise<void> {
         return { rows: Array.isArray(rows) ? (rows as unknown[]) : [] };
       },
     });
-    await postgrator.migrate();
+    await postgrator.migrate(to);
   } finally {
     await conn.end();
   }

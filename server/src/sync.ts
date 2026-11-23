@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { tx } from './db.js';
 import {
   COLORS,
@@ -19,9 +19,21 @@ export type HistoryReason = 'edit' | 'merged' | 'conflict_client' | 'restore' | 
 export interface SyncDeps {
   pool: Pool;
   historyKeep: number;
-  /** 커밋된 변경을 실시간으로 알린다. */
-  onChange: (seq: number, note: Note) => void;
+  /** 커밋된 변경을 그 사용자의 기기들에 실시간으로 알린다. */
+  onChange: (userId: number, seq: number, note: Note) => void;
 }
+
+export interface ApplyOptions {
+  /** 이력 사유를 강제로 정한다 (가져오기 등) */
+  reason?: HistoryReason;
+  /** 저장 용량 한도(바이트, 메모·이력 각각). null 이면 제한 없음(관리자) */
+  quota?: number | null;
+}
+
+/** 저장 용량 계산: 내용 바이트 + 행마다 100 (빈 메모를 아주 많이 만드는 것도 막는다) */
+export const ROW_OVERHEAD = 100;
+const cost = (content: string) => Buffer.byteLength(content, 'utf8') + ROW_OVERHEAD;
+const MB = 1024 * 1024;
 
 interface NoteRow extends RowDataPacket {
   date: string;
@@ -64,26 +76,33 @@ export class SyncService {
   constructor(private deps: SyncDeps) {}
 
   /**
-   * op 하나를 적용한다.
+   * 사용자 userId 의 달력에 op 하나를 적용한다.
    * - 같은 opId 가 이미 처리됐으면 저장된 응답을 그대로 돌려준다 (status=duplicate)
    * - baseVersion 이 현재 version 과 다르고 내용도 다르면 두 내용을 합치고 충돌 표시
-   * 모든 쓰기는 sync_lock 행을 잠가 직렬화하므로 변경 번호(seq)는 커밋 순서와 일치한다.
+   * 모든 쓰기는 자기 users 행을 잠가 사용자별로 직렬화하므로 변경 번호(seq)는 커밋 순서와 일치한다 (D-016).
    */
-  async applyOp(op: Op, deviceId: number | null, reasonOverride?: HistoryReason): Promise<OpResult> {
+  async applyOp(userId: number, op: Op, deviceId: number | null, opts: ApplyOptions = {}): Promise<OpResult> {
     const err = validateOp(op);
     if (err) return { opId: (op as Op)?.opId ?? '', status: 'rejected', error: err };
+    const quota = opts.quota ?? null;
 
     let changed: { seq: number; note: Note } | null = null;
     const result = await tx(this.deps.pool, async (c) => {
-      await c.query('SELECT id FROM sync_lock WHERE id = 1 FOR UPDATE');
+      const [urows] = await c.query<RowDataPacket[]>(
+        'SELECT last_seq, note_bytes, history_bytes FROM users WHERE id = ? FOR UPDATE',
+        [userId],
+      );
+      if (!urows.length) return { opId: op.opId, status: 'rejected', error: '사용자가 없습니다' } as OpResult;
+      const u = urows[0];
 
-      const [dup] = await c.query<RowDataPacket[]>('SELECT response FROM applied_ops WHERE op_id = ?', [op.opId]);
+      const [dup] = await c.query<RowDataPacket[]>('SELECT user_id, response FROM applied_ops WHERE op_id = ?', [op.opId]);
       if (dup.length) {
+        if (Number(dup[0].user_id) !== userId) return { opId: op.opId, status: 'rejected', error: 'opId 충돌' } as OpResult;
         const prev = JSON.parse(dup[0].response) as OpResult;
         return { ...prev, status: 'duplicate' } as OpResult;
       }
 
-      const [rows] = await c.query<NoteRow[]>('SELECT * FROM notes WHERE date = ?', [op.date]);
+      const [rows] = await c.query<NoteRow[]>('SELECT * FROM notes WHERE user_id = ? AND date = ?', [userId, op.date]);
       const cur: Note = rows.length
         ? rowToNote(rows[0])
         : { date: op.date, content: '', color: null, version: 0, conflict: false };
@@ -119,31 +138,58 @@ export class SyncService {
       if (isNoop && status === 'applied') {
         res = { opId: op.opId, status, note: cur, seq: null };
       } else {
+        // 용량: 메모가 커지는 수정만 막는다. 줄이거나 지우는 수정은 한도를 넘었어도 받는다.
+        const noteBytes = Number(u.note_bytes) + cost(content) - (rows.length ? cost(cur.content) : 0);
+        if (quota !== null && noteBytes > Number(u.note_bytes) && noteBytes > quota) {
+          return {
+            opId: op.opId,
+            status: 'rejected',
+            error: `저장 공간(${Math.round(quota / MB)}MB)이 가득 찼습니다. 필요 없는 메모를 지운 뒤 다시 저장하세요.`,
+          } as OpResult;
+        }
         const version = cur.version + 1;
         const now = new Date();
         await c.query(
-          `INSERT INTO notes (date, content, color, version, conflict, updated_at, device_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO notes (user_id, date, content, color, version, conflict, updated_at, device_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE content = VALUES(content), color = VALUES(color), version = VALUES(version),
              conflict = VALUES(conflict), updated_at = VALUES(updated_at), device_id = VALUES(device_id)`,
-          [op.date, content, color, version, conflict ? 1 : 0, now, deviceId],
+          [userId, op.date, content, color, version, conflict ? 1 : 0, now, deviceId],
         );
+        let historyBytes = Number(u.history_bytes);
         if (clientConflictContent !== null) {
-          await this.addHistory(c, op.date, op.baseVersion, clientConflictContent, color, 'conflict_client', deviceId, now);
+          historyBytes += await this.addHistory(c, userId, op.date, op.baseVersion, clientConflictContent, color, 'conflict_client', deviceId, now);
         }
         const reason: HistoryReason =
-          reasonOverride ?? (status === 'merged' ? 'merged' : op.kind === 'restore' ? 'restore' : 'edit');
-        await this.addHistory(c, op.date, version, content, color, reason, deviceId, now);
-        const [ins] = await c.query<ResultSetHeader>(
-          'INSERT INTO changes (date, version, device_id, created_at) VALUES (?, ?, ?, ?)',
-          [op.date, version, deviceId, now],
-        );
+          opts.reason ?? (status === 'merged' ? 'merged' : op.kind === 'restore' ? 'restore' : 'edit');
+        historyBytes += await this.addHistory(c, userId, op.date, version, content, color, reason, deviceId, now);
+        // 이력이 한도를 넘으면 그 사용자의 가장 오래된 이력부터 지운다
+        if (quota !== null && historyBytes > quota) historyBytes -= await this.trimHistory(c, userId, historyBytes - quota);
+
+        const seq = Number(u.last_seq) + 1;
+        await c.query('INSERT INTO changes (user_id, seq, date, version, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+          userId,
+          seq,
+          op.date,
+          version,
+          deviceId,
+          now,
+        ]);
+        // since 조회에는 날짜별 마지막 변경 번호만 있으면 된다
+        await c.query('DELETE FROM changes WHERE user_id = ? AND date = ? AND seq < ?', [userId, op.date, seq]);
+        await c.query('UPDATE users SET last_seq = ?, note_bytes = ?, history_bytes = ? WHERE id = ?', [
+          seq,
+          Math.max(0, noteBytes),
+          Math.max(0, historyBytes),
+          userId,
+        ]);
         const note: Note = { date: op.date, content, color, version, conflict, updatedAt: now.toISOString() };
-        res = { opId: op.opId, status, note, seq: ins.insertId };
-        changed = { seq: ins.insertId, note };
+        res = { opId: op.opId, status, note, seq };
+        changed = { seq, note };
       }
-      await c.query('INSERT INTO applied_ops (op_id, device_id, response, created_at) VALUES (?, ?, ?, ?)', [
+      await c.query('INSERT INTO applied_ops (op_id, user_id, device_id, response, created_at) VALUES (?, ?, ?, ?, ?)', [
         op.opId,
+        userId,
         deviceId,
         JSON.stringify(res),
         new Date(),
@@ -152,13 +198,15 @@ export class SyncService {
     });
     if (changed) {
       const ch = changed as { seq: number; note: Note };
-      this.deps.onChange(ch.seq, ch.note);
+      this.deps.onChange(userId, ch.seq, ch.note);
     }
     return result;
   }
 
+  /** 이력 한 줄을 넣고 그 날짜의 최근 N개만 남긴다. 늘어난 용량(바이트)을 돌려준다. */
   private async addHistory(
     c: PoolConnection,
+    userId: number,
     date: string,
     version: number,
     content: string,
@@ -166,30 +214,58 @@ export class SyncService {
     reason: HistoryReason,
     deviceId: number | null,
     now: Date,
-  ) {
+  ): Promise<number> {
     await c.query(
-      'INSERT INTO note_history (date, version, content, color, reason, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [date, version, content, color, reason, deviceId, now],
+      'INSERT INTO note_history (user_id, date, version, content, color, reason, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [userId, date, version, content, color, reason, deviceId, now],
     );
-    // 날짜별로 최근 N개만 남긴다 (인덱스 (date, id) 사용)
-    await c.query(
-      `DELETE FROM note_history WHERE date = ? AND id < (
-         SELECT id FROM (SELECT id FROM note_history WHERE date = ? ORDER BY id DESC LIMIT 1 OFFSET ?) t)`,
-      [date, date, this.deps.historyKeep - 1],
+    let delta = cost(content);
+    const [cut] = await c.query<RowDataPacket[]>(
+      'SELECT id FROM note_history WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1 OFFSET ?',
+      [userId, date, this.deps.historyKeep - 1],
     );
+    if (cut.length) {
+      const where = 'user_id = ? AND date = ? AND id < ?';
+      const args = [userId, date, cut[0].id];
+      const [[s]] = await c.query<RowDataPacket[]>(
+        `SELECT COALESCE(SUM(LENGTH(content) + ${ROW_OVERHEAD}), 0) AS b FROM note_history WHERE ${where}`,
+        args,
+      );
+      await c.query(`DELETE FROM note_history WHERE ${where}`, args);
+      delta -= Number(s.b);
+    }
+    return delta;
   }
 
-  async pull(since: number, limit = 1000): Promise<PullResponse> {
-    const pool = this.deps.pool;
-    const [[m]] = await pool.query<RowDataPacket[]>('SELECT COALESCE(MAX(seq), 0) AS maxSeq FROM changes');
-    const maxSeq = Number(m.maxSeq);
+  /** 사용자의 가장 오래된 이력부터 need 바이트 이상 지운다. 지운 바이트를 돌려준다. */
+  private async trimHistory(c: PoolConnection, userId: number, need: number): Promise<number> {
+    let freed = 0;
+    while (freed < need) {
+      const [rows] = await c.query<RowDataPacket[]>(
+        `SELECT id, LENGTH(content) + ${ROW_OVERHEAD} AS b FROM note_history WHERE user_id = ? ORDER BY id LIMIT 100`,
+        [userId],
+      );
+      if (!rows.length) break;
+      let lastId = 0;
+      for (const r of rows) {
+        freed += Number(r.b);
+        lastId = Number(r.id);
+        if (freed >= need) break;
+      }
+      await c.query('DELETE FROM note_history WHERE user_id = ? AND id <= ?', [userId, lastId]);
+    }
+    return freed;
+  }
+
+  async pull(userId: number, since: number, limit = 1000): Promise<PullResponse> {
+    const maxSeq = await this.lastSeq(userId);
     if (since > maxSeq) return { notes: [], lastSeq: maxSeq, more: false, reset: true };
-    const [rows] = await pool.query<(NoteRow & { seq: number })[]>(
+    const [rows] = await this.deps.pool.query<(NoteRow & { seq: number })[]>(
       `SELECT n.*, x.seq FROM (
-         SELECT date, MAX(seq) AS seq FROM changes WHERE seq > ? AND seq <= ? GROUP BY date
-       ) x JOIN notes n ON n.date = x.date
+         SELECT date, MAX(seq) AS seq FROM changes WHERE user_id = ? AND seq > ? AND seq <= ? GROUP BY date
+       ) x JOIN notes n ON n.user_id = ? AND n.date = x.date
        ORDER BY x.seq LIMIT ?`,
-      [since, maxSeq, limit + 1],
+      [userId, since, maxSeq, userId, limit + 1],
     );
     const more = rows.length > limit;
     const page = more ? rows.slice(0, limit) : rows;
@@ -200,17 +276,18 @@ export class SyncService {
     };
   }
 
-  async lastSeq(): Promise<number> {
-    const [[m]] = await this.deps.pool.query<RowDataPacket[]>('SELECT COALESCE(MAX(seq), 0) AS s FROM changes');
-    return Number(m.s);
+  /** 커밋된 마지막 변경 번호. users.last_seq 는 변경과 같은 트랜잭션에서 오르므로 이 값 이하는 모두 커밋돼 있다. */
+  async lastSeq(userId: number): Promise<number> {
+    const [rows] = await this.deps.pool.query<RowDataPacket[]>('SELECT last_seq FROM users WHERE id = ?', [userId]);
+    return Number(rows[0]?.last_seq ?? 0);
   }
 
-  async history(date: string) {
+  async history(userId: number, date: string) {
     const [rows] = await this.deps.pool.query<RowDataPacket[]>(
       `SELECT h.id, h.version, h.content, h.color, h.reason, h.created_at, d.name AS device
        FROM note_history h LEFT JOIN devices d ON d.id = h.device_id
-       WHERE h.date = ? ORDER BY h.id DESC`,
-      [date],
+       WHERE h.user_id = ? AND h.date = ? ORDER BY h.id DESC`,
+      [userId, date],
     );
     return rows.map((r) => ({
       id: Number(r.id),
@@ -223,14 +300,15 @@ export class SyncService {
     }));
   }
 
-  async getNote(date: string): Promise<Note | null> {
-    const [rows] = await this.deps.pool.query<NoteRow[]>('SELECT * FROM notes WHERE date = ?', [date]);
+  async getNote(userId: number, date: string): Promise<Note | null> {
+    const [rows] = await this.deps.pool.query<NoteRow[]>('SELECT * FROM notes WHERE user_id = ? AND date = ?', [userId, date]);
     return rows.length ? rowToNote(rows[0]) : null;
   }
 
-  async allNotes(): Promise<Note[]> {
+  async allNotes(userId: number): Promise<Note[]> {
     const [rows] = await this.deps.pool.query<NoteRow[]>(
-      "SELECT * FROM notes WHERE content <> '' OR color IS NOT NULL ORDER BY date",
+      "SELECT * FROM notes WHERE user_id = ? AND (content <> '' OR color IS NOT NULL) ORDER BY date",
+      [userId],
     );
     return rows.map(rowToNote);
   }

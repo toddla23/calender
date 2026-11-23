@@ -57,8 +57,25 @@ export class LoginLimiter {
   }
 }
 
+/** 사용자별 op 속도 제한 (토큰 버킷). 1분에 perMinute 개, 한꺼번에는 perMinute 개까지 */
+export class OpLimiter {
+  private map = new Map<number, { tokens: number; at: number }>();
+  constructor(private perMinute: number) {}
+  take(userId: number, n: number, now = Date.now()): boolean {
+    const e = this.map.get(userId) ?? { tokens: this.perMinute, at: now };
+    e.tokens = Math.min(this.perMinute, e.tokens + ((now - e.at) / 60_000) * this.perMinute);
+    e.at = now;
+    this.map.set(userId, e);
+    if (this.map.size > 10_000) for (const [k, v] of this.map) if (now - v.at > 60_000) this.map.delete(k);
+    if (e.tokens < n) return false;
+    e.tokens -= n;
+    return true;
+  }
+}
+
 export interface Device {
   id: number;
+  userId: number;
   email: string;
   name: string;
   kind: 'web' | 'desktop';
@@ -72,22 +89,27 @@ export class DeviceStore {
     private idleDays: number,
   ) {}
 
-  async create(email: string, name: string, kind: Device['kind'], ip: string): Promise<{ token: string; device: Device }> {
+  async create(
+    user: { id: number; email: string },
+    name: string,
+    kind: Device['kind'],
+    ip: string,
+  ): Promise<{ token: string; device: Device }> {
     const token = randomToken(32);
     const now = new Date();
     const [r] = await this.pool.query<ResultSetHeader>(
-      'INSERT INTO devices (email, name, kind, token_hash, created_at, last_used_at, last_ip) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [email, name.slice(0, 100), kind, sha256(token), now, now, ip],
+      'INSERT INTO devices (user_id, email, name, kind, token_hash, created_at, last_used_at, last_ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [user.id, user.email, name.slice(0, 100), kind, sha256(token), now, now, ip],
     );
-    return { token, device: { id: r.insertId, email, name, kind } };
+    return { token, device: { id: r.insertId, userId: user.id, email: user.email, name, kind } };
   }
 
-  /** 토큰 검증. 폐기됐거나 90일 동안 안 쓴 토큰은 거부한다. */
+  /** 토큰 검증. 폐기됐거나 90일 동안 안 쓴 토큰, 사용자가 없는 토큰은 거부한다. */
   async verify(token: string, ip: string): Promise<Device | null> {
     if (!token || token.length > 200) return null;
     const [rows] = await this.pool.query<RowDataPacket[]>(
-      `SELECT id, email, name, kind, last_used_at FROM devices
-       WHERE token_hash = ? AND revoked_at IS NULL AND last_used_at > NOW(3) - INTERVAL ? DAY`,
+      `SELECT d.id, d.user_id, u.email, d.name, d.kind FROM devices d JOIN users u ON u.id = d.user_id
+       WHERE d.token_hash = ? AND d.revoked_at IS NULL AND d.last_used_at > NOW(3) - INTERVAL ? DAY`,
       [sha256(token), this.idleDays],
     );
     if (!rows.length) return null;
@@ -98,14 +120,15 @@ export class DeviceStore {
       this.touchCache.set(r.id, now);
       await this.pool.query('UPDATE devices SET last_used_at = NOW(3), last_ip = ? WHERE id = ?', [ip, r.id]);
     }
-    return { id: r.id, email: r.email, name: r.name, kind: r.kind };
+    return { id: r.id, userId: r.user_id, email: r.email, name: r.name, kind: r.kind };
   }
 
-  async list() {
+  /** 그 사용자의 기기만 */
+  async list(userId: number) {
     const [rows] = await this.pool.query<RowDataPacket[]>(
       `SELECT id, email, name, kind, created_at, last_used_at, last_ip FROM devices
-       WHERE revoked_at IS NULL AND last_used_at > NOW(3) - INTERVAL ? DAY ORDER BY last_used_at DESC`,
-      [this.idleDays],
+       WHERE user_id = ? AND revoked_at IS NULL AND last_used_at > NOW(3) - INTERVAL ? DAY ORDER BY last_used_at DESC`,
+      [userId, this.idleDays],
     );
     return rows.map((r) => ({
       id: r.id,
@@ -118,10 +141,11 @@ export class DeviceStore {
     }));
   }
 
-  async revoke(id: number): Promise<boolean> {
+  /** 자기 기기만 폐기할 수 있다 */
+  async revoke(id: number, userId: number): Promise<boolean> {
     const [r] = await this.pool.query<ResultSetHeader>(
-      'UPDATE devices SET revoked_at = NOW(3) WHERE id = ? AND revoked_at IS NULL',
-      [id],
+      'UPDATE devices SET revoked_at = NOW(3) WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
+      [id, userId],
     );
     this.touchCache.delete(id);
     return r.affectedRows > 0;

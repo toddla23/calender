@@ -10,8 +10,22 @@ export interface Config {
   publicUrl: string;
   db: { host: string; port: number; database: string; user: string; password: string };
   google: { clientId: string; clientSecret: string };
+  /** ALLOWED_EMAILS=* 이면 true: Google 계정이 있으면 누구나 가입 (D-017) */
+  openSignup: boolean;
   allowedEmails: Set<string>;
   adminEmails: Set<string>;
+  /** 기존 달력(마이그레이션 전 데이터)을 넘겨받을 사용자 = ADMIN_EMAILS 첫 번째 */
+  ownerEmail: string;
+  /** 개인정보처리방침에 적는 문의처 */
+  contactEmail: string;
+  /** 가입 가능한 최대 사용자 수 (openSignup 일 때만) */
+  maxUsers: number;
+  /** 관리자가 아닌 사용자의 저장 용량 (메모, 이력 각각). 바이트 */
+  quotaBytes: number;
+  /** 관리자가 아닌 사용자가 1분에 보낼 수 있는 op 수 */
+  opsPerMinute: number;
+  /** Google Search Console 소유권 확인 HTML 파일 이름 (예: google1234abcd.html). 서버가 그 경로로 확인 내용을 준다 */
+  googleSiteVerification: string;
   corsOrigins: Set<string>;
   webDir: string;
   holidaysFile: string;
@@ -49,10 +63,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const host = env.HOST ?? '127.0.0.1';
   if (host === '0.0.0.0' || host === '::') errors.push('HOST 를 0.0.0.0 으로 열 수 없습니다 (127.0.0.1 사용)');
 
-  const allowedEmails = new Set(list(env.ALLOWED_EMAILS));
-  if (allowedEmails.size === 0) errors.push('ALLOWED_EMAILS 에 로그인을 허용할 Google 이메일을 1개 이상 적어야 합니다');
+  const openSignup = (env.ALLOWED_EMAILS ?? '').trim() === '*';
+  const allowedEmails = new Set(openSignup ? [] : list(env.ALLOWED_EMAILS));
+  if (!openSignup && allowedEmails.size === 0)
+    errors.push('ALLOWED_EMAILS 에 로그인을 허용할 Google 이메일을 1개 이상 적어야 합니다 (누구나 가입은 *)');
   const adminEmails = new Set(list(env.ADMIN_EMAILS));
-  if (adminEmails.size === 0) for (const e of allowedEmails) adminEmails.add(e);
+  if (openSignup) {
+    // 누구나 가입하면 "허용 목록 전체 = 관리자" 규칙을 쓸 수 없다
+    if (adminEmails.size === 0) errors.push('ALLOWED_EMAILS=* 이면 ADMIN_EMAILS 에 관리자 이메일을 적어야 합니다');
+    if (!env.CONTACT_EMAIL) errors.push('ALLOWED_EMAILS=* 이면 개인정보처리방침에 적을 CONTACT_EMAIL 이 필요합니다');
+  } else if (adminEmails.size === 0) for (const e of allowedEmails) adminEmails.add(e);
+  const num = (k: string, def: number, min = 1) => {
+    const v = Number(env[k] ?? def);
+    if (!Number.isFinite(v) || v < min) errors.push(`${k} 가 올바르지 않습니다`);
+    return v;
+  };
 
   const cfg: Config = {
     host,
@@ -66,8 +91,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       password: req('DB_PASSWORD'),
     },
     google: { clientId: req('GOOGLE_CLIENT_ID'), clientSecret: req('GOOGLE_CLIENT_SECRET') },
+    openSignup,
     allowedEmails,
     adminEmails,
+    ownerEmail: [...adminEmails][0] ?? '',
+    contactEmail: (env.CONTACT_EMAIL ?? [...adminEmails][0] ?? '').trim(),
+    maxUsers: num('MAX_USERS', 50),
+    quotaBytes: num('USER_QUOTA_MB', 10) * 1024 * 1024,
+    opsPerMinute: num('OPS_PER_MINUTE', 600),
+    googleSiteVerification: (env.GOOGLE_SITE_VERIFICATION ?? '').trim(),
     corsOrigins: new Set([
       new URL(publicUrl).origin,
       'http://tauri.localhost',
@@ -100,6 +132,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   };
   if (!Number.isInteger(cfg.port) || cfg.port <= 0) errors.push('PORT 가 올바르지 않습니다');
   if ([8080, 3306, 5432, 22, 111, 631].includes(cfg.port)) errors.push(`PORT ${cfg.port} 는 사용할 수 없습니다`);
+  if (cfg.googleSiteVerification && !/^google[0-9a-f]{8,32}\.html$/.test(cfg.googleSiteVerification))
+    errors.push('GOOGLE_SITE_VERIFICATION 은 google로 시작하는 .html 파일 이름이어야 합니다 (예: google1234abcd.html)');
   if (errors.length) throw new Error('설정 오류:\n - ' + errors.join('\n - '));
   return cfg;
+}
+
+/** 이 이메일로 로그인할 수 있는가 */
+export function isAllowedEmail(cfg: Config, email: string): boolean {
+  return cfg.openSignup || cfg.allowedEmails.has(email);
 }

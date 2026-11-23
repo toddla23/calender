@@ -43,8 +43,8 @@ export interface TestCtx extends App {
   cfg: Config;
   url: string;
   close: () => Promise<void>;
-  /** 테스트용 기기 토큰 발급 */
-  token: (name?: string) => Promise<string>;
+  /** 테스트용 기기 토큰 발급 (email 사용자가 없으면 만든다) */
+  token: (name?: string, email?: string) => Promise<string>;
 }
 
 export async function startTestServer(extraEnv: NodeJS.ProcessEnv = {}): Promise<TestCtx> {
@@ -59,7 +59,10 @@ export async function startTestServer(extraEnv: NodeJS.ProcessEnv = {}): Promise
     ...built,
     cfg,
     url: `http://127.0.0.1:${addr.port}`,
-    token: async (name = 'test') => (await built.devices.create(ALLOWED, name, 'desktop', '127.0.0.1')).token,
+    token: async (name = 'test', email = ALLOWED) => {
+      const user = (await built.users.findOrCreate(email, Infinity))!;
+      return (await built.devices.create(user, name, 'desktop', '127.0.0.1')).token;
+    },
     close: async () => {
       await built.app.close();
       await pool.end();

@@ -6,12 +6,13 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import type { Pool } from 'mysql2/promise';
-import type { Config } from './config.js';
+import { isAllowedEmail, type Config } from './config.js';
 import {
   DeviceStore,
   EphemeralStore,
   LoginLimiter,
   OAUTH_COOKIE,
+  OpLimiter,
   SESSION_COOKIE,
   clientIp,
   createGoogleAuth,
@@ -27,6 +28,9 @@ import { SyncService } from './sync.js';
 import { HolidayService } from './holidays.js';
 import { MAX_OPS_PER_PUSH, isValidDate, type Op, type ServerEvent } from './protocol.js';
 import { registerDataRoutes } from './dataRoutes.js';
+import { UserStore, type User } from './users.js';
+import { privacyPage } from './privacy.js';
+import { PAGES_CSS, aboutPage, termsPage } from './pages.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -46,22 +50,32 @@ export interface App {
   app: FastifyInstance;
   sync: SyncService;
   devices: DeviceStore;
+  users: UserStore;
   hub: Hub;
 }
 
 /** 연결된 WebSocket 관리 및 방송 */
 export class Hub {
-  private sockets = new Map<WebSocket, number>();
-  add(ws: WebSocket, deviceId: number) {
-    this.sockets.set(ws, deviceId);
+  private sockets = new Map<WebSocket, { deviceId: number; userId: number }>();
+  add(ws: WebSocket, device: { id: number; userId: number }) {
+    this.sockets.set(ws, { deviceId: device.id, userId: device.userId });
     ws.on('close', () => this.sockets.delete(ws));
   }
+  /** 모든 사용자에게 (공휴일 등 공통 데이터) */
   broadcast(ev: ServerEvent) {
     const data = JSON.stringify(ev);
     for (const ws of this.sockets.keys()) if (ws.readyState === 1) ws.send(data);
   }
+  /** 그 사용자의 기기에만 */
+  sendToUser(userId: number, ev: ServerEvent) {
+    const data = JSON.stringify(ev);
+    for (const [ws, s] of this.sockets) if (s.userId === userId && ws.readyState === 1) ws.send(data);
+  }
   closeDevice(deviceId: number) {
-    for (const [ws, id] of this.sockets) if (id === deviceId) ws.close(4001, 'revoked');
+    for (const [ws, s] of this.sockets) if (s.deviceId === deviceId) ws.close(4001, 'revoked');
+  }
+  closeUser(userId: number) {
+    for (const [ws, s] of this.sockets) if (s.userId === userId) ws.close(4001, 'deleted');
   }
   pingAll() {
     for (const ws of this.sockets.keys()) {
@@ -110,18 +124,21 @@ export async function buildApp(opts: AppOptions): Promise<App> {
 
   const google = opts.google ?? createGoogleAuth(cfg);
   const devices = new DeviceStore(pool, cfg.tokenIdleDays);
+  const users = new UserStore(pool);
+  await users.adoptLegacy(cfg.ownerEmail);
   const limiter = new LoginLimiter();
+  const opLimiter = new OpLimiter(cfg.opsPerMinute);
   const hub = new Hub();
   const sync = new SyncService({
     pool,
     historyKeep: cfg.historyKeep,
-    onChange: (seq, note) => hub.broadcast({ type: 'note', seq, note }),
+    onChange: (userId, seq, note) => hub.sendToUser(userId, { type: 'note', seq, note }),
   });
   const holidays = new HolidayService(pool, cfg.holidaysFile);
 
   type OAuthState = { client: 'web' | 'desktop'; verifier: string; binding: string; port?: number; challenge?: string; name?: string };
   const oauthStates = new EphemeralStore<OAuthState>(10 * 60_000);
-  const desktopCodes = new EphemeralStore<{ email: string; challenge: string; name: string }>(2 * 60_000);
+  const desktopCodes = new EphemeralStore<{ user: User; challenge: string; name: string }>(2 * 60_000);
   const wsTickets = new EphemeralStore<Device>(30_000);
 
   await app.register(fastifyCookie);
@@ -151,7 +168,7 @@ export async function buildApp(opts: AppOptions): Promise<App> {
         if (req.method === 'OPTIONS') {
           reply
             .header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE')
-            .header('Access-Control-Allow-Headers', 'authorization, content-type')
+            .header('Access-Control-Allow-Headers', 'authorization, content-type, x-deskcal-user')
             .header('Access-Control-Max-Age', '600')
             .code(204)
             .send();
@@ -185,7 +202,9 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       token = req.cookies[SESSION_COOKIE];
       req.viaCookie = true;
     }
-    const device = token ? await devices.verify(token, ip) : null;
+    const found = token ? await devices.verify(token, ip) : null;
+    // 허용 목록에서 빠진 이메일은 이미 받은 토큰도 쓸 수 없다
+    const device = found && isAllowedEmail(cfg, found.email) ? found : null;
     if (!device) {
       if (req.viaCookie) reply.clearCookie(SESSION_COOKIE, { path: '/' });
       return reply.code(401).send({ error: 'unauthorized' });
@@ -197,9 +216,18 @@ export async function buildApp(opts: AppOptions): Promise<App> {
         return reply.code(403).send({ error: 'bad origin' });
       }
     }
+    // 클라이언트가 캐시 주인과 다른 계정으로 요청하면 거부한다 (다른 계정 캐시·큐가 섞이지 않게)
+    const expectUser = req.headers['x-deskcal-user'];
+    if (typeof expectUser === 'string' && expectUser && expectUser !== device.email) {
+      return reply.code(409).send({ error: 'account changed' });
+    }
     req.device = device;
   }
   const isAdmin = (d?: Device) => !!d && cfg.adminEmails.has(d.email);
+  /** 관리자가 아니면 저장 용량 한도를 둔다 */
+  const quotaFor = (d: Device) => (isAdmin(d) ? null : cfg.quotaBytes);
+  /** 관리자가 아니면 op 속도 제한 */
+  const takeOps = (d: Device, n: number) => isAdmin(d) || opLimiter.take(d.userId, n);
 
   // ---------- 헬스체크 ----------
   app.get('/healthz', async (_req, reply) => {
@@ -210,6 +238,27 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       return reply.code(503).send({ ok: false });
     }
   });
+
+  // ---------- 공개 페이지: 소개·개인정보처리방침·이용약관 (로그인 없이) ----------
+  const publicPage = (path: string, render: (c: Config) => string) =>
+    app.get(path, async (_req, reply) => {
+      reply.header('Cache-Control', 'no-cache');
+      return reply.type('text/html; charset=utf-8').send(render(cfg));
+    });
+  publicPage('/about', aboutPage);
+  publicPage('/privacy', privacyPage);
+  publicPage('/terms', termsPage);
+  app.get('/pages.css', async (_req, reply) => {
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.type('text/css; charset=utf-8').send(PAGES_CSS);
+  });
+  // Google Search Console 소유권 확인 (HTML 파일 방식)
+  if (cfg.googleSiteVerification) {
+    const name = cfg.googleSiteVerification;
+    app.get(`/${name}`, async (_req, reply) =>
+      reply.type('text/html; charset=utf-8').send(`google-site-verification: ${name}`),
+    );
+  }
 
   // ---------- Android 앱(TWA) 연결 확인 ----------
   app.get('/.well-known/assetlinks.json', async (_req, reply) => {
@@ -277,15 +326,24 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       req.log.warn({ err: (e as Error).message }, 'Google 교환 오류');
       return fail('exchange_error', '구글 로그인 처리 중 오류가 났습니다.');
     }
-    if (!cfg.allowedEmails.has(email)) return fail('not_allowed', '이 계정은 사용할 수 없습니다.', email);
+    if (!isAllowedEmail(cfg, email)) return fail('not_allowed', '이 계정은 사용할 수 없습니다.', email);
 
     limiter.success(ip);
+    // 처음 로그인하면 사용자(빈 달력)를 만든다. 누구나 가입이면 인원 한도가 있다.
+    const user = await users.findOrCreate(email, cfg.openSignup ? cfg.maxUsers : Infinity);
+    if (!user) {
+      req.log.warn({ ip, email }, '가입 인원 초과');
+      return reply
+        .code(403)
+        .type('text/html')
+        .send(htmlPage('가입할 수 없습니다', '지금은 새 사용자를 받을 수 없습니다. 나중에 다시 시도하세요.'));
+    }
     if (st.client === 'desktop') {
-      const code = desktopCodes.put({ email, challenge: st.challenge!, name: st.name! });
+      const code = desktopCodes.put({ user, challenge: st.challenge!, name: st.name! });
       req.log.info({ ip, email }, '데스크톱 로그인 코드 발급');
       return reply.redirect(`http://127.0.0.1:${st.port}/callback?code=${encodeURIComponent(code)}`);
     }
-    const { token, device } = await devices.create(email, deviceNameFromUA(req.headers['user-agent']), 'web', ip);
+    const { token, device } = await devices.create(user, deviceNameFromUA(req.headers['user-agent']), 'web', ip);
     req.log.info({ ip, email, deviceId: device.id }, '웹 로그인');
     reply.setCookie(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: COOKIE_MAX_AGE });
     return reply.redirect('/');
@@ -301,9 +359,9 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       req.log.warn({ ip, reason: 'bad_desktop_code' }, '로그인 실패');
       return reply.code(400).send({ error: 'invalid code' });
     }
-    const { token, device } = await devices.create(rec.email, rec.name, 'desktop', ip);
-    req.log.info({ ip, email: rec.email, deviceId: device.id }, '데스크톱 로그인');
-    return { token, device: { id: device.id, name: device.name }, email: rec.email };
+    const { token, device } = await devices.create(rec.user, rec.name, 'desktop', ip);
+    req.log.info({ ip, email: rec.user.email, deviceId: device.id }, '데스크톱 로그인');
+    return { token, device: { id: device.id, name: device.name }, email: rec.user.email };
   });
 
   // ---------- 인증 필요한 API ----------
@@ -314,22 +372,38 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       email: req.device!.email,
       device: { id: req.device!.id, name: req.device!.name, kind: req.device!.kind },
       admin: isAdmin(req.device),
+      usage: await users.usage(req.device!.userId),
+      quota: quotaFor(req.device!),
     }));
 
+    // 계정 삭제: 달력·이력·기기 토큰을 모두 지운다. 실수 방지로 본인 이메일을 다시 받는다.
+    api.delete('/api/account', async (req, reply) => {
+      const b = (req.body ?? {}) as { email?: string };
+      const d = req.device!;
+      if (typeof b.email !== 'string' || b.email.trim().toLowerCase() !== d.email) {
+        return reply.code(400).send({ error: '확인용 이메일이 맞지 않습니다' });
+      }
+      await users.delete(d.userId);
+      hub.closeUser(d.userId);
+      reply.clearCookie(SESSION_COOKIE, { path: '/' });
+      req.log.info({ userId: d.userId }, '계정 삭제');
+      return { ok: true };
+    });
+
     api.post('/api/auth/logout', async (req, reply) => {
-      await devices.revoke(req.device!.id);
+      await devices.revoke(req.device!.id, req.device!.userId);
       hub.closeDevice(req.device!.id);
       reply.clearCookie(SESSION_COOKIE, { path: '/' });
       return { ok: true };
     });
 
-    api.get('/api/devices', async (req) => ({ devices: await devices.list(), currentId: req.device!.id }));
+    api.get('/api/devices', async (req) => ({ devices: await devices.list(req.device!.userId), currentId: req.device!.id }));
 
     api.delete('/api/devices/:id', async (req, reply) => {
       const id = Number((req.params as { id: string }).id);
       if (!Number.isInteger(id)) return reply.code(400).send({ error: 'bad id' });
-      const ok = await devices.revoke(id);
-      hub.closeDevice(id);
+      const ok = await devices.revoke(id, req.device!.userId);
+      if (ok) hub.closeDevice(id);
       req.log.info({ deviceId: id, by: req.device!.id }, '기기 토큰 폐기');
       return ok ? { ok: true } : reply.code(404).send({ error: 'not found' });
     });
@@ -339,8 +413,10 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     api.post('/api/sync/push', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
       const ops = (req.body as { ops?: Op[] })?.ops;
       if (!Array.isArray(ops) || ops.length > MAX_OPS_PER_PUSH) return reply.code(400).send({ error: 'ops 형식 오류' });
+      const d = req.device!;
+      if (!takeOps(d, ops.length)) return reply.code(429).send({ error: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.' });
       const results = [];
-      for (const op of ops) results.push(await sync.applyOp(op, req.device!.id));
+      for (const op of ops) results.push(await sync.applyOp(d.userId, op, d.id, { quota: quotaFor(d) }));
       return { results };
     });
 
@@ -349,13 +425,13 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       const since = Number(q.since ?? 0);
       const limit = Math.min(Math.max(Number(q.limit ?? 1000), 1), 5000);
       if (!Number.isInteger(since) || since < 0 || !Number.isInteger(limit)) return reply.code(400).send({ error: 'since 오류' });
-      return sync.pull(since, limit);
+      return sync.pull(req.device!.userId, since, limit);
     });
 
     api.get('/api/notes/:date/history', async (req, reply) => {
       const { date } = req.params as { date: string };
       if (!isValidDate(date)) return reply.code(400).send({ error: 'date 오류' });
-      return { history: await sync.history(date) };
+      return { history: await sync.history(req.device!.userId, date) };
     });
 
     api.get('/api/holidays', async () => ({ holidays: await holidays.list() }));
@@ -379,7 +455,7 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       return ok ? { ok: true } : reply.code(404).send({ error: 'not found' });
     });
 
-    registerDataRoutes(api, { sync, holidays, hub });
+    registerDataRoutes(api, { sync, holidays, hub, isAdmin, quotaFor, takeOps });
   });
 
   // ---------- WebSocket (handshake 에서 일회용 티켓 검사) ----------
@@ -402,8 +478,8 @@ export async function buildApp(opts: AppOptions): Promise<App> {
       ws.alive = true;
       ws.on('pong', () => (ws.alive = true));
       ws.on('message', () => {}); // 클라이언트→서버 메시지는 쓰지 않는다
-      hub.add(ws, req.device!.id);
-      ws.send(JSON.stringify({ type: 'hello', lastSeq: await sync.lastSeq() } satisfies ServerEvent));
+      hub.add(ws, req.device!);
+      ws.send(JSON.stringify({ type: 'hello', lastSeq: await sync.lastSeq(req.device!.userId) } satisfies ServerEvent));
     },
   );
   // Funnel 등 중간 프록시의 유휴 연결 끊김 방지 + 죽은 연결 정리
@@ -431,5 +507,5 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     });
   }
 
-  return { app, sync, devices, hub };
+  return { app, sync, devices, users, hub };
 }

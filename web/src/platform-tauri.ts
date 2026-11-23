@@ -17,6 +17,8 @@ export interface DesktopSettings {
   fontSize: number; // 메모 글자 크기(px)
   locked: boolean;
   mode: 'desktop' | 'bottom' | 'normal';
+  /** 윈도우 시작 시 자동 실행을 기본값(켬)으로 한 번 맞췄는지. 그 뒤로는 사용자가 설정에서 고른 대로 둔다 */
+  autostartDefaulted: boolean;
 }
 
 const DEFAULTS: DesktopSettings = {
@@ -27,6 +29,7 @@ const DEFAULTS: DesktopSettings = {
   fontSize: 12.5,
   locked: false,
   mode: 'desktop',
+  autostartDefaulted: false,
 };
 
 /** 앱 데이터 폴더의 JSON 파일 (임시 파일 + rename 으로 원자적 저장) */
@@ -90,6 +93,17 @@ export async function createTauriPlatform(): Promise<Platform> {
       toast('바탕화면에 붙이지 못해 "항상 아래" 방식으로 표시합니다.', 'warn');
     }
     return applied;
+  }
+
+  // 처음 실행하면 윈도우 시작 시 자동 실행을 켠다 (한 번만, 이후에는 설정에서 끈 선택을 존중)
+  if (!settings.autostartDefaulted) {
+    try {
+      await invoke('autostart_set', { enabled: true });
+    } catch {
+      // 레지스트리를 못 쓰는 환경이면 기본값 적용만 건너뛴다
+    }
+    settings.autostartDefaulted = true;
+    await save();
   }
 
   applyLook();

@@ -22,8 +22,8 @@ F01~F15는 2026-11-14 재구현(커밋 `ca5ba6d`) 이후 README에 있던 내용
 - **선행**: 없음
 - **범위**: Fastify 서버, 마이그레이션(postgrator, 시작 시 자동 적용), `/healthz`, `127.0.0.1:3000`만 열기·금지 포트 거부, esbuild 단일 파일 번들, Docker 이미지
 - **완료 조건**
-  - [x] Docker 이미지 150MB 이하 (134MB)
-  - [x] 서버 유휴 메모리 150MB 이하 (31MB)
+  - [x] Docker 이미지 150MB 이하 (파이 arm64 130MB)
+  - [x] 서버 유휴 메모리 150MB 이하 (파이 RSS 92MB, 익명 42MB)
 - **사용자 확인 방법**
   1. `docker compose ps` → STATUS가 `healthy`
   2. `curl -s https://raspberry-pi.tailb6b7a3.ts.net/healthz` → `{"ok":true}`

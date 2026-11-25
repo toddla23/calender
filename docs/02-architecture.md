@@ -131,11 +131,15 @@ data/holidays-kr.json  2025~2030 공휴일
 
 ### 서버
 
-x86 Docker Desktop 기준. 파이에서는 아직 재지 않았다(비슷할 것으로 예상).
+2026-11-25, 라즈베리파이 5 (4GB, arm64, 16KB 페이지 커널), Docker 29.9.1, 이미지 `3661d9c`, 46시간 가동 중(WebSocket 2개 연결)에 측정. 괄호 안은 처음 x86 Docker Desktop에서 잰 값.
 
 | 항목 | 목표 | 측정값 |
 |---|---|---|
-| Docker 이미지 | 150MB 이하 | **134MB** (압축 33MB). alpine + nodejs + mariadb-dump, 서버는 단일 파일 번들 |
-| 서버 메모리 | 150MB 이하 | **31MB** (유휴, `docker stats`) |
+| Docker 이미지 | 150MB 이하 | **130MB** (압축 34MB, arm64). (x86: 134MB, 압축 33MB) alpine + nodejs + mariadb-dump, 서버는 단일 파일 번들 |
+| 서버 메모리 | 150MB 이하 | **RSS 92MB**, 그중 익명 메모리 42MB + 파일 매핑 51MB(node 실행 파일 등, 필요하면 버릴 수 있는 페이지). 가동 후 최대 104MB. (x86 `docker stats`: 31MB) |
+| 서버 유휴 CPU | 거의 0% | **0.12%** (60초 동안 CPU 시간 70ms, 코어 하나 기준) |
+
+- 파이 커널은 `cgroup_disable=memory`라서 `docker stats`가 메모리를 `0B`로 보여 준다. 값은 `/proc/<pid>/status`·`smaps_rollup`에서 읽었다. x86의 `docker stats` 값(파일 캐시 일부 제외)과는 재는 방식이 달라 바로 비교하지 않는다.
+- 다시 재기: `P=$(docker top deskcal -o pid | tail -n +2 | head -1); grep -E 'VmRSS|RssAnon|RssFile|VmHWM' /proc/$P/status`
 | 웹 번들 | 100KB 이하 | JS 29KB + CSS 11KB (gzip 약 14KB, 2026-11-23). 데스크톱 전용 코드 7KB 는 별도 청크 |
 | 실시간 반영 | 1초 이내 | 브라우저 두 개 사이 18~170ms, 테스트 클라이언트 사이 수십 ms |

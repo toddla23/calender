@@ -98,6 +98,24 @@
 - 바탕화면 달력은 켜져 있어야 쓸모가 있다. 앱을 처음 실행할 때 한 번 켜고, 설정 파일에 `autostartDefaulted`를 남긴다. 그 뒤로는 사용자가 설정에서 끈 선택을 바꾸지 않는다.
 - 0.2.1 이전 버전을 쓰던 PC도 업데이트 후 처음 실행할 때 한 번 켜진다.
 
+### D-023. Android 홈 화면 위젯은 네이티브(Java `RemoteViews`)로 만들고 보기 전용이다 (2026-11-25 사용자 결정)
+- 위젯 2종: 월 달력 격자와 다가오는 메모 목록. 편집은 앱에서 한다(위젯은 글자 입력을 받을 수 없다).
+- 원칙 5("화면 코드는 한 벌")의 예외다. Android 위젯은 웹 코드로 그릴 수 없고, Chrome에도 Android용 PWA 위젯이 없다. 보기 전용이라 따로 두는 코드가 작다.
+- Glance·WorkManager 같은 라이브러리를 더하지 않는다. `AppWidgetProvider`·`RemoteViewsService`와 플랫폼 `HttpURLConnection`·`org.json`만 쓴다(원칙 4).
+- 위젯은 전체 동기화(`since`)를 하지 않고 보이는 날짜 범위의 메모 앞부분만 받는다(`GET /api/widget`). 폰에 남는 사본과 코드를 줄이기 위해서다.
+
+### D-024. 위젯은 1시간마다, 탭할 때, 앱을 닫고 돌아올 때 갱신한다 (2026-11-25 사용자 결정)
+- D-012("폴링하지 않는다")의 위젯 예외. 위젯은 WebSocket을 열어 둘 수 없다.
+- 1시간마다는 위젯 설정 `updatePeriodMillis`로 한다(시스템이 깨움, 앱 상주 없음). 탭(`⟳`·`‹ ›`·칸)과 앱 종료 후 복귀(`LauncherActivity.onRestart`) 때도 받는다. 10초 안에 다시 부르면 건너뛴다.
+- FCM 푸시는 쓰지 않는다. Firebase 프로젝트·Google 서비스 라이브러리·서버 발송 코드가 필요하고, 알림이 Google 서버를 거쳐 개인정보처리방침도 바뀐다. 달력 메모는 분 단위로 바뀌지 않는다.
+
+### D-025. 위젯 로그인은 앱에서 넘겨받는다 (PKCE) (2026-11-25 사용자 결정)
+- 위젯은 Chrome의 `dc_session` 쿠키를 읽을 수 없어서 위젯 전용 기기 토큰(`kind='widget'`)을 받는다.
+- 흐름: 위젯 **연결** → 네이티브가 verifier를 만들고 앱을 `/?widget-link=<challenge>`로 연다 → 로그인된 웹이 확인을 받아 `POST /api/widget/link {challenge}` → 2분짜리 일회용 코드 → `intent://…#Intent;scheme=batangcalendar;package=<앱>;end`로 우리 앱에만 넘김 → 네이티브가 `POST /api/auth/widget/exchange {code, verifier}`로 토큰을 받는다.
+- 이유: Google 로그인을 다시 하지 않는다. 코드를 가로채도 verifier가 없어 쓸 수 없고, 남이 만든 challenge로 연결 확인을 누르게 해도 코드는 그 사람 폰의 우리 앱으로만 간다(D-003과 같은 구조).
+- 토큰은 Android Keystore의 AES-GCM 키로 암호화해 앱 전용 저장소에 둔다. 키는 백업되지 않아서 백업에서 복원된 토큰은 쓸 수 없다(다시 연결).
+- 위젯 두 종류가 토큰 하나를 같이 쓴다. 기기 목록에 "Android 위젯"으로 보이고, 폐기하면 위젯에 "다시 연결"이 뜬다.
+
 ## 열린 질문 (해당 기능 착수 전에 사용자에게 묻는다)
 
 ### O-01. 플레이스토어에 올릴지 (F15 전)

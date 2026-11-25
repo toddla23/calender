@@ -33,6 +33,7 @@ web/               바닐라 TypeScript + Vite. PWA 와 Tauri 가 같은 코드�
   src/sync/engine.ts  오프라인 큐 + 캐시 + WebSocket 재연결 (DOM 없음, Node 테스트 가능)
 desktop/src-tauri/ Tauri v2 (Rust): 바탕화면 부착(Win32), 트레이, 자동 실행, 파일 저장소, DPAPI
 android/           TWA 앱 (패키지 io.github.toddla23.batangcalendar)
+  app/src/main/java/…/widget/  홈 화면 위젯 2종 (Java RemoteViews, D-023): 월 달력·다가오는 메모, 연결(PKCE)·갱신·캐시
 data/holidays-kr.json  2025~2030 공휴일
 ```
 
@@ -66,6 +67,22 @@ data/holidays-kr.json  2025~2030 공휴일
 - 캐시에는 주인 계정(`owner`)이 같이 저장된다. 로그인한 계정이 다르면 캐시와 큐를 비운다(D-015, 03-protocol 3절).
 - **윈도우 앱**: 캐시·큐·설정을 `%LOCALAPPDATA%\dev.selfhosted.batangcalendar\`에 JSON 파일로 둔다. 쓰기는 임시 파일 + 이름 바꾸기라서 도중에 꺼져도 깨지지 않는다. 로그인 토큰은 Windows DPAPI로 암호화해 `token.bin`에 둔다.
 
+- **Android 위젯**: 앱 전용 저장소에 위젯 토큰(Android Keystore AES-GCM으로 암호화, D-025)과 받은 범위의 메모 앞부분 캐시 `widget-cache.json`을 둔다. TWA(Chrome)의 IndexedDB·쿠키와는 따로다.
+
+## Android 홈 화면 위젯 (F19)
+
+웹 코드가 아닌 네이티브 `RemoteViews`로 그린다(D-023). 위젯은 보기 전용이고, 탭하면 앱이 `/?date=YYYY-MM-DD`로 열려 그 날짜 편집 시트가 뜬다.
+
+| 위젯 | 크기 | 보여 주는 것 | 받는 범위 |
+|---|---|---|---|
+| 월 달력 (`MonthWidgetProvider`) | 4×4 | 42칸, 칸 색, 공휴일, 오늘 테두리, 메모 앞부분. `‹ ›` 달 이동, 제목 탭은 이번 달 | 그 달 42칸 |
+| 다가오는 메모 (`ListWidgetProvider`) | 4×2 | 오늘부터 60일 안에 메모·색이 있는 날 목록 | 오늘~59일 뒤 |
+
+- 갱신(D-024): 위젯 설정 `updatePeriodMillis=3600000`(시스템이 깨움, 마지막으로 받은 지 30분 안 됐으면 건너뜀), `⟳`·`‹ ›`·칸 탭(5초 안 연속 탭은 무시), 앱을 닫고 돌아올 때(`LauncherActivity.onRestart`). 받은 뒤 모든 위젯을 다시 그린다.
+- 연결(D-025): 위젯 **연결** → `WidgetLinkActivity`가 verifier를 저장하고 앱을 `/?widget-link=<challenge>`로 연다 → 웹이 확인을 받아 코드를 만들고 `intent://widget-link?code=…;package=…`로 넘긴다 → `WidgetLinkActivity`가 교환해 토큰을 저장한다. 위젯 두 종류가 토큰 하나를 같이 쓴다.
+- 401(폐기·만료·계정 삭제)을 받으면 토큰과 캐시를 지우고 "연결" 안내를 보인다. 위젯을 모두 지우면 서버에 로그아웃해 토큰을 폐기한다.
+- 라이브러리를 더하지 않았다(`HttpURLConnection`, `org.json`). 릴리스 APK 985KB → 1,011KB.
+
 ## 윈도우 앱 표시 방식
 
 | 방식 | 동작 |
@@ -91,7 +108,8 @@ data/holidays-kr.json  2025~2030 공휴일
 ## 보안
 
 - 모든 API·WebSocket 은 인증 필수 (정적 파일, `/healthz`, `/about`·`/privacy`·`/terms` 만 공개)
-- 모든 데이터 조회·수정은 토큰의 사용자 것으로만 한다. 기기 목록·폐기, 이력, 내보내기, WebSocket 이벤트 모두 (D-015)
+- 모든 데이터 조회·수정은 토큰의 사용자 것으로만 한다. 기기 목록·폐기, 이력, 내보내기, WebSocket 이벤트, 위젯 범위 조회 모두 (D-015)
+- Android 위젯 연결 코드는 위젯이 만든 PKCE challenge에 묶여 있고 2분 유효, 한 번만 쓴다. 데스크톱 코드와 섞어 쓸 수 없다 (D-025)
 - Google 로그인 + `ALLOWED_EMAILS` 허용 목록(`*`면 누구나 가입, D-017). 비어 있으면 서버가 시작되지 않는다. 목록에서 빠진 이메일은 이미 받은 토큰도 401. OAuth 는 state + 브라우저 바인딩 쿠키 + PKCE
 - 누구나 가입일 때: `ADMIN_EMAILS`·`CONTACT_EMAIL` 필수, 가입 인원 `MAX_USERS`, 관리자가 아닌 사용자는 저장 용량 `USER_QUOTA_MB`(D-018)와 op 속도 `OPS_PER_MINUTE` 제한
 - 계정 삭제(`DELETE /api/account`)는 본인 이메일 확인 후 그 사용자의 모든 행을 지운다 (D-020)
@@ -141,5 +159,5 @@ data/holidays-kr.json  2025~2030 공휴일
 
 - 파이 커널은 `cgroup_disable=memory`라서 `docker stats`가 메모리를 `0B`로 보여 준다. 값은 `/proc/<pid>/status`·`smaps_rollup`에서 읽었다. x86의 `docker stats` 값(파일 캐시 일부 제외)과는 재는 방식이 달라 바로 비교하지 않는다.
 - 다시 재기: `P=$(docker top deskcal -o pid | tail -n +2 | head -1); grep -E 'VmRSS|RssAnon|RssFile|VmHWM' /proc/$P/status`
-| 웹 번들 | 100KB 이하 | JS 29KB + CSS 11KB (gzip 약 14KB, 2026-11-23). 데스크톱 전용 코드 7KB 는 별도 청크 |
+| 웹 번들 | 100KB 이하 | JS 31KB + CSS 11KB (gzip 약 14KB, 2026-11-25). 데스크톱 전용 코드 7KB 는 별도 청크 |
 | 실시간 반영 | 1초 이내 | 브라우저 두 개 사이 18~170ms, 테스트 클라이언트 사이 수십 ms |

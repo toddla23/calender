@@ -157,6 +157,57 @@
             
         </activity>
 
+        <!-- 홈 화면 위젯 (F19, D-023~D-025) -->
+        <receiver
+            android:name=".widget.MonthWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_month_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_month_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.ListWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_list_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_list_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.ListWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- 위젯 칸을 탭하면 갱신하고 앱을 그 날짜로 연다 -->
+        <activity
+            android:name=".widget.WidgetOpenActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true" />
+
+        <!-- 위젯 연결: 웹이 intent://…;package=이 앱 으로 연결 코드를 넘긴다 (D-025) -->
+        <activity
+            android:name=".widget.WidgetLinkActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="batangcalendar" android:host="widget-link" />
+            </intent-filter>
+        </activity>
+
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
 
         <activity android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"

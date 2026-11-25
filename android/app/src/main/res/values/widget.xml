@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 홈 화면 위젯 (F19). 색은 웹 styles.css 와 같다. 다크는 values-night/widget.xml -->
+<resources>
+    <color name="widget_bg">#FFFFFF</color>
+    <color name="widget_text">#1D1D22</color>
+    <color name="widget_muted">#6B6B76</color>
+    <color name="widget_line">#E2E2E8</color>
+    <color name="widget_accent">#2F6FDE</color>
+    <color name="widget_sun">#D93A3A</color>
+    <color name="widget_sat">#2F62C7</color>
+    <color name="widget_item">#F3F3F6</color>
+    <color name="widget_note_red">#FDE1DF</color>
+    <color name="widget_note_orange">#FDEACF</color>
+    <color name="widget_note_yellow">#FBF3BD</color>
+    <color name="widget_note_green">#DCF2DC</color>
+    <color name="widget_note_blue">#D9E9FB</color>
+    <color name="widget_note_purple">#EBE0FA</color>
+    <color name="widget_note_gray">#E7E7EB</color>
+
+    <style name="WidgetIconButton">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/widget_text</item>
+        <item name="android:textSize">18sp</item>
+    </style>
+
+    <style name="WidgetDow">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/widget_muted</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <string name="widget_month_label">월 달력</string>
+    <string name="widget_month_desc">이번 달 메모를 달력 격자로 봅니다</string>
+    <string name="widget_list_label">다가오는 메모</string>
+    <string name="widget_list_desc">오늘부터 60일 안의 메모를 목록으로 봅니다</string>
+</resources>

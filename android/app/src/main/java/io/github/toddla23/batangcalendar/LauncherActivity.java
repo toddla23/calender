@@ -43,6 +43,13 @@ public class LauncherActivity
     }
 
     @Override
+    protected void onRestart() {
+        // 앱(TWA)을 닫고 돌아오면 홈 화면 위젯에 고친 내용을 반영한다 (F19, D-024)
+        io.github.toddla23.batangcalendar.widget.WidgetUpdater.refreshIfAny(this);
+        super.onRestart();
+    }
+
+    @Override
     protected Uri getLaunchingUrl() {
         // Get the original launch Url.
         Uri uri = super.getLaunchingUrl();

@@ -47,6 +47,7 @@ export function privacyPage(cfg: Config): string {
 <ul>
 <li>웹·휴대폰: 로그인 쿠키(<code>dc_session</code>, HttpOnly·Secure), 오프라인에서 쓰기 위한 달력 사본과 아직 보내지 못한 수정(브라우저 IndexedDB)</li>
 <li>윈도우 앱: 달력 사본·설정 파일, Windows DPAPI 로 암호화한 로그인 토큰</li>
+<li>Android 홈 화면 위젯을 연결하면: 위젯이 보여 주는 날짜의 메모 앞부분·칸 색·공휴일 사본, Android Keystore 로 암호화한 위젯 전용 로그인 토큰(앱 전용 저장소). 위젯을 모두 지우면 토큰을 폐기하고 사본을 지웁니다.</li>
 <li>로그아웃하거나 계정을 삭제하면 이 기기의 사본을 지웁니다.</li>
 </ul>
 

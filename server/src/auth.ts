@@ -78,7 +78,8 @@ export interface Device {
   userId: number;
   email: string;
   name: string;
-  kind: 'web' | 'desktop';
+  /** widget: Android 홈 화면 위젯 (D-025) */
+  kind: 'web' | 'desktop' | 'widget';
 }
 
 /** 기기 토큰 발급/검증/폐기 */

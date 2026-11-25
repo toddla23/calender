@@ -105,6 +105,10 @@ export class Api implements Transport {
   deleteAccount(email: string) {
     return this.req('DELETE', '/api/account', { email });
   }
+  /** Android 위젯 연결 코드 (D-025) */
+  async linkWidget(challenge: string) {
+    return (await this.req<{ code: string }>('POST', '/api/widget/link', { challenge })).code;
+  }
   exportJson() {
     return this.req<Response>('GET', '/api/export', undefined, true);
   }

@@ -26,7 +26,7 @@ import {
 } from './auth.js';
 import { SyncService } from './sync.js';
 import { HolidayService } from './holidays.js';
-import { MAX_OPS_PER_PUSH, isValidDate, type Op, type ServerEvent } from './protocol.js';
+import { MAX_OPS_PER_PUSH, WIDGET_MAX_DAYS, WIDGET_PREVIEW_CHARS, isValidDate, type Op, type ServerEvent, type WidgetResponse } from './protocol.js';
 import { registerDataRoutes } from './dataRoutes.js';
 import { UserStore, type User } from './users.js';
 import { privacyPage } from './privacy.js';
@@ -139,7 +139,9 @@ export async function buildApp(opts: AppOptions): Promise<App> {
 
   type OAuthState = { client: 'web' | 'desktop'; verifier: string; binding: string; port?: number; challenge?: string; name?: string };
   const oauthStates = new EphemeralStore<OAuthState>(10 * 60_000);
-  const desktopCodes = new EphemeralStore<{ user: User; challenge: string; name: string }>(2 * 60_000);
+  // 데스크톱 로그인(D-003)·위젯 연결(D-025)의 일회용 코드. PKCE challenge 에 묶여 있고 2분 유효
+  const linkCodes = new EphemeralStore<{ user: User; challenge: string; name: string; kind: 'desktop' | 'widget' }>(2 * 60_000);
+  const isChallenge = (c: unknown): c is string => typeof c === 'string' && /^[A-Za-z0-9_-]{43}$/.test(c);
   const wsTickets = new EphemeralStore<Device>(30_000);
 
   await app.register(fastifyCookie);
@@ -284,7 +286,7 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     const st: OAuthState = { client: 'web', verifier, binding: sha256(binding) };
     if (q.client === 'desktop') {
       const port = Number(q.port);
-      if (!Number.isInteger(port) || port < 1024 || port > 65535 || !q.challenge || !/^[A-Za-z0-9_-]{43}$/.test(q.challenge)) {
+      if (!Number.isInteger(port) || port < 1024 || port > 65535 || !isChallenge(q.challenge)) {
         return reply.code(400).type('text/html').send(htmlPage('잘못된 요청', '데스크톱 로그인 매개변수가 올바르지 않습니다.'));
       }
       Object.assign(st, { client: 'desktop', port, challenge: q.challenge, name: (q.name ?? 'Windows 앱').slice(0, 60) });
@@ -340,7 +342,7 @@ export async function buildApp(opts: AppOptions): Promise<App> {
         .send(htmlPage('가입할 수 없습니다', '지금은 새 사용자를 받을 수 없습니다. 나중에 다시 시도하세요.'));
     }
     if (st.client === 'desktop') {
-      const code = desktopCodes.put({ user, challenge: st.challenge!, name: st.name! });
+      const code = linkCodes.put({ user, challenge: st.challenge!, name: st.name!, kind: 'desktop' });
       req.log.info({ ip, email }, '데스크톱 로그인 코드 발급');
       return reply.redirect(`http://127.0.0.1:${st.port}/callback?code=${encodeURIComponent(code)}`);
     }
@@ -350,20 +352,24 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     return reply.redirect('/');
   });
 
-  app.post('/api/auth/desktop/exchange', async (req, reply) => {
-    const ip = clientIp(req);
-    if (limiter.isLocked(ip)) return reply.code(429).send({ error: 'locked' });
-    const b = (req.body ?? {}) as { code?: string; verifier?: string };
-    const rec = desktopCodes.take(b.code);
-    if (!rec || typeof b.verifier !== 'string' || !safeEqual(pkceChallenge(b.verifier), rec.challenge)) {
-      limiter.fail(ip);
-      req.log.warn({ ip, reason: 'bad_desktop_code' }, '로그인 실패');
-      return reply.code(400).send({ error: 'invalid code' });
-    }
-    const { token, device } = await devices.create(rec.user, rec.name, 'desktop', ip);
-    req.log.info({ ip, email: rec.user.email, deviceId: device.id }, '데스크톱 로그인');
-    return { token, device: { id: device.id, name: device.name }, email: rec.user.email };
-  });
+  /** 일회용 코드 + PKCE verifier → 기기 토큰. kind 가 맞지 않는 코드는 거부한다 */
+  const exchangeRoute = (path: string, kind: 'desktop' | 'widget', logMsg: string) =>
+    app.post(path, async (req, reply) => {
+      const ip = clientIp(req);
+      if (limiter.isLocked(ip)) return reply.code(429).send({ error: 'locked' });
+      const b = (req.body ?? {}) as { code?: string; verifier?: string };
+      const rec = linkCodes.take(b.code);
+      if (!rec || rec.kind !== kind || typeof b.verifier !== 'string' || !safeEqual(pkceChallenge(b.verifier), rec.challenge)) {
+        limiter.fail(ip);
+        req.log.warn({ ip, reason: `bad_${kind}_code` }, '로그인 실패');
+        return reply.code(400).send({ error: 'invalid code' });
+      }
+      const { token, device } = await devices.create(rec.user, rec.name, kind, ip);
+      req.log.info({ ip, email: rec.user.email, deviceId: device.id }, logMsg);
+      return { token, device: { id: device.id, name: device.name }, email: rec.user.email };
+    });
+  exchangeRoute('/api/auth/desktop/exchange', 'desktop', '데스크톱 로그인');
+  exchangeRoute('/api/auth/widget/exchange', 'widget', '위젯 연결');
 
   // ---------- 인증 필요한 API ----------
   await app.register(async (api) => {
@@ -457,6 +463,30 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     });
 
     registerDataRoutes(api, { sync, holidays, hub, isAdmin, quotaFor, takeOps });
+
+    // ---------- Android 위젯 (F19) ----------
+    // 로그인된 앱(웹)이 위젯 연결 코드를 만든다. 코드는 위젯이 만든 challenge 에 묶인다 (D-025)
+    api.post('/api/widget/link', async (req, reply) => {
+      const b = (req.body ?? {}) as { challenge?: string };
+      if (!isChallenge(b.challenge)) return reply.code(400).send({ error: 'challenge 오류' });
+      const d = req.device!;
+      const code = linkCodes.put({ user: { id: d.userId, email: d.email }, challenge: b.challenge, name: 'Android 위젯', kind: 'widget' });
+      req.log.info({ deviceId: d.id }, '위젯 연결 코드 발급');
+      return { code };
+    });
+
+    // 위젯이 보여 줄 날짜 범위의 메모 앞부분과 공휴일 (D-023)
+    api.get('/api/widget', async (req, reply): Promise<WidgetResponse> => {
+      const { from, to } = req.query as { from?: string; to?: string };
+      if (!isValidDate(from) || !isValidDate(to)) return reply.code(400).send({ error: 'from/to 오류' });
+      const days = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+      if (days < 1 || days > WIDGET_MAX_DAYS) return reply.code(400).send({ error: `범위는 1~${WIDGET_MAX_DAYS}일` });
+      const [notes, all] = await Promise.all([
+        sync.rangePreview(req.device!.userId, from, to, WIDGET_PREVIEW_CHARS),
+        holidays.list(),
+      ]);
+      return { from, to, notes, holidays: all.filter((h) => h.date >= from && h.date <= to) };
+    });
 
     // 관리자 통계 (보기 전용, 메모 내용 없음, D-021)
     api.get('/api/admin/stats', async (req, reply) => {

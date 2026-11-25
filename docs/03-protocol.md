@@ -14,6 +14,7 @@
 | `GET /auth/google/start` | 없음 | Google 로그인 시작 |
 | `GET /auth/google/callback` | 없음 | Google 로그인 콜백 |
 | `POST /api/auth/desktop/exchange` | 없음 (PKCE) | 윈도우 앱 일회용 코드 → 기기 토큰 |
+| `POST /api/auth/widget/exchange` | 없음 (PKCE) | Android 위젯 일회용 코드 → 위젯 토큰 (1.4) |
 | `GET /api/me` | 필요 | 로그인한 사용자 `{email, device, admin, usage, quota}` |
 | `DELETE /api/account` | 필요 | 계정 삭제 `{email}` (본인 이메일 확인, D-020) |
 | `POST /api/auth/logout` | 필요 | 로그아웃 (이 기기 토큰 폐기) |
@@ -25,6 +26,8 @@
 | `GET /api/holidays` | 필요 | 공휴일 (고정 + 임시) |
 | `POST /api/holidays` · `DELETE /api/holidays/:date` | `ADMIN_EMAILS` | 임시공휴일 추가 · 삭제 |
 | `GET /api/export` · `POST /api/import` | 필요 | JSON 내보내기 · 가져오기 (6절) |
+| `POST /api/widget/link` | 필요 | 위젯 연결 코드 만들기 `{challenge}` → `{code}` (1.4) |
+| `GET /api/widget?from=&to=` | 필요 | 위젯용 날짜 범위의 메모 앞부분·공휴일 (7절) |
 | `GET /api/admin/stats` | `ADMIN_EMAILS` | 관리자 통계: 합계, 최근 30일 날짜별 저장·가입, 사용자별 숫자, 서버 상태. 메모 내용 없음 (D-021) |
 | `GET /admin` | 없음 (화면만) | 관리자 화면. 데이터는 위 API 로 받으므로 관리자 세션 쿠키가 있어야 보인다 |
 | `WS /api/ws?ticket=` | 티켓 | 실시간 이벤트 (2.4) |
@@ -47,6 +50,7 @@
 | 클라이언트가 한 번에 보내는 op | 50 (`PUSH_BATCH`) | `engine.ts` |
 | pull 한 페이지 | 1000칸 | `sync.ts` |
 | WebSocket 메시지 크기 | 64KB | `app.ts` |
+| 위젯 범위 조회 | 62일(`WIDGET_MAX_DAYS`), 메모 앞 300자(`WIDGET_PREVIEW_CHARS`) | `protocol.ts` |
 | WebSocket ping | 30초마다 (Funnel 유휴 끊김 방지, 죽은 연결 정리) | `app.ts` |
 | 색 | `red` `orange` `yellow` `green` `blue` `purple` `gray` 또는 없음 | `protocol.ts` |
 
@@ -82,6 +86,17 @@ Google 쪽에는 웹 애플리케이션 클라이언트 하나만 있으면 된�
 
 - 256비트 랜덤. DB에는 SHA-256만 저장한다
 - 90일 동안 쓰지 않으면 만료된다. 설정의 기기 목록에서 폐기할 수 있다
+
+### 1.4 Android 위젯 (D-025)
+
+1. 위젯의 **연결**을 누르면 앱이 verifier를 만들어 저장하고, 앱(TWA)을 `/?widget-link=<challenge>`(S256)로 연다
+2. 로그인된 웹이 "홈 화면 위젯 연결" 확인을 보이고, **연결**을 누르면 `POST /api/widget/link {challenge}` → `{code}` (2분, 일회용, 그 사용자에 묶임)
+3. 웹이 `intent://widget-link?code=…#Intent;scheme=batangcalendar;package=io.github.toddla23.batangcalendar;end`로 이동 → 우리 앱만 받는다
+4. 앱이 `POST /api/auth/widget/exchange {code, verifier}` → `{token, email}`. 기기 목록에 `Android 위젯`(`kind='widget'`)으로 남는다
+
+- 로그인하지 않은 상태로 열리면 challenge를 그 탭의 `sessionStorage`에 10분 동안 두었다가 로그인 후 확인을 보인다
+- 데스크톱 코드(1.2)와 같은 저장소를 쓰지만 `kind`가 다르면 거부한다
+- 웹은 `/?date=YYYY-MM-DD`로 열리면 그 달로 가서 편집 시트를 연다. 두 매개변수 모두 읽은 뒤 주소에서 지운다
 
 ## 2. 동기화 API
 
@@ -156,3 +171,11 @@ Google 쪽에는 웹 애플리케이션 클라이언트 하나만 있으면 된�
 - 내보내기: 내 달력 전체를 JSON 파일로 받는다 (임시공휴일 목록도 들어간다)
 - 가져오기: 내 달력에서 파일에 있는 날짜만 덮어쓴다. 덮어쓴 칸은 이력에 남아 되돌릴 수 있다. 용량·속도 제한을 받는다
 - 파일의 임시공휴일은 관리자일 때만 가져온다 (D-019)
+
+## 7. 위젯 범위 조회 (D-023)
+
+`GET /api/widget?from=YYYY-MM-DD&to=YYYY-MM-DD` → `{from, to, notes:[{date, text, color, conflict}], holidays:[{date, name, custom?}]}`
+
+- 범위는 1~62일(양 끝 포함). 넘거나 날짜가 틀리면 400
+- 내용이나 색이 있는 칸만, 내용은 앞 300자. 위젯은 전체 동기화(`since`)를 하지 않고 이 응답으로 캐시의 그 범위를 통째로 바꾼다
+- 갱신 시점은 D-024 (1시간마다·탭·앱 복귀). 실시간 이벤트는 받지 않는다

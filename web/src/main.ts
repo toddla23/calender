@@ -2,7 +2,8 @@ import './styles.css';
 import { SyncEngine, HttpError, type Status } from './sync/engine';
 import { CalendarView } from './calendar';
 import { Editor } from './editor';
-import { showHistory, showSettings, toast } from './dialogs';
+import { showHistory, showSettings, showWidgetLink, toast } from './dialogs';
+import { pendingWidgetLink, readLaunchParams, widgetIntentUrl } from './launch';
 import { msUntilMidnight } from './dates';
 import { getPlatform } from './platform';
 import type { Me } from './api';
@@ -10,6 +11,11 @@ import type { Me } from './api';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function main() {
+  // Android 위젯(F19)이 붙여 보낸 매개변수는 읽고 주소에서 지운다 (새로고침 때 다시 처리하지 않게)
+  const launch = readLaunchParams(location.search);
+  if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+  if (launch.widgetLink) pendingWidgetLink.save(launch.widgetLink);
+
   const platform = await getPlatform();
   document.documentElement.dataset.platform = platform.kind;
   const statusEl = $('status');
@@ -148,12 +154,26 @@ async function main() {
     await adoptAccount(me);
   } catch (e) {
     if (e instanceof HttpError && e.status === 401) {
+      // 위젯 연결 요청은 이 탭에 남아 있다가 로그인 후 다시 열릴 때 처리한다
       showLogin(engine.hasCache());
       return;
     }
     // 네트워크 오류: 캐시로 오프라인 동작
   }
   engine.start();
+
+  // 위젯에서 날짜를 탭해서 열었으면 그 달로 가서 편집
+  if (launch.date) {
+    const [y, m] = launch.date.split('-').map(Number);
+    cal.setMonth(y, m - 1);
+    const cell = cal.cellEl(launch.date);
+    if (cell) editor.open(launch.date, cell);
+  }
+  const challenge = pendingWidgetLink.take();
+  if (challenge) {
+    if (me) showWidgetLink(platform.api, me.email, challenge, widgetIntentUrl);
+    else toast('위젯을 연결하려면 인터넷에 연결된 상태에서 위젯의 "연결"을 다시 누르세요.', 'warn', 8000);
+  }
 }
 
 main().catch((e) => {

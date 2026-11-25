@@ -86,6 +86,31 @@ export async function showHistory(api: Api, engine: SyncEngine, date: string) {
   );
 }
 
+/** Android 위젯 연결 확인 (F19, D-025). 버튼을 눌러야 코드를 만들고 앱으로 넘긴다 */
+export function showWidgetLink(api: Api, email: string, challenge: string, intentUrl: (code: string) => string) {
+  const ok = h('button', { type: 'button', class: 'btn primary' }, '연결');
+  const cancel = h('button', { type: 'button', class: 'btn' }, '취소');
+  const dlg = openDialog('홈 화면 위젯 연결', [
+    h('p', {}, `이 휴대폰의 홈 화면 위젯에 ${email} 달력을 보여 줍니다.`),
+    h('p', { class: 'muted small' }, '위젯에는 메모 앞부분이 보이므로 휴대폰을 다른 사람이 볼 수 있다면 주의하세요. 설정 → 로그인된 기기에서 "Android 위젯"을 폐기하면 연결이 끊깁니다.'),
+    h('div', { class: 'btn-row' }, ok, cancel),
+  ]);
+  cancel.addEventListener('click', () => dlg.close());
+  ok.addEventListener('click', async () => {
+    ok.disabled = true;
+    try {
+      const code = await api.linkWidget(challenge);
+      // 버튼을 누른 직후라야 Chrome 이 앱 열기를 허락한다
+      location.href = intentUrl(code);
+      dlg.close();
+      toast('위젯에 연결 정보를 보냈습니다. 홈 화면에서 확인하세요.');
+    } catch (e) {
+      ok.disabled = false;
+      toast(`위젯 연결 실패: ${(e as Error).message}`, 'error');
+    }
+  });
+}
+
 export interface SettingsExtras {
   /** 플랫폼별 추가 설정 (Tauri 전용 등) */
   render?: () => Node[];

@@ -63,6 +63,17 @@ export interface Holiday {
   custom?: boolean;
 }
 
+/** Android 위젯 (F19, D-023) */
+export const WIDGET_MAX_DAYS = 62; // GET /api/widget 한 번에 받는 날짜 수 (from~to 포함)
+export const WIDGET_PREVIEW_CHARS = 300; // 메모 앞부분 글자 수
+
+export interface WidgetResponse {
+  from: string;
+  to: string;
+  notes: { date: string; text: string; color: ColorKey | null; conflict: boolean }[];
+  holidays: Holiday[];
+}
+
 export const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 export function isValidDate(s: unknown): s is string {

@@ -313,6 +313,24 @@ export class SyncService {
     return rows.map(rowToNote);
   }
 
+  /**
+   * 위젯용: 날짜 범위의 메모 앞부분 (D-023). 내용이나 색이 있는 칸만.
+   * 위젯은 전체 동기화를 하지 않으므로 내용을 maxChars 글자로 자른다.
+   */
+  async rangePreview(userId: number, from: string, to: string, maxChars: number) {
+    const [rows] = await this.deps.pool.query<RowDataPacket[]>(
+      `SELECT date, LEFT(content, ?) AS text, color, conflict FROM notes
+       WHERE user_id = ? AND date BETWEEN ? AND ? AND (content <> '' OR color IS NOT NULL) ORDER BY date`,
+      [maxChars, userId, from, to],
+    );
+    return rows.map((r) => ({
+      date: r.date as string,
+      text: r.text as string,
+      color: (r.color as Note['color']) ?? null,
+      conflict: !!r.conflict,
+    }));
+  }
+
   /** 오래된 opId 기록 정리 (90일) */
   async cleanup() {
     await this.deps.pool.query('DELETE FROM applied_ops WHERE created_at < NOW(3) - INTERVAL 90 DAY');
